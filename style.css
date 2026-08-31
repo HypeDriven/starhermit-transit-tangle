@@ -1,0 +1,166 @@
+/* Transit Tangle — responsive DOM shell over the Three.js canvas */
+:root {
+  --bg: #eef3f8; --panel: #ffffff; --ink: #243b53; --ink-soft: #4a6b8a;
+  --accent: #3b82f6; --accent-ink: #ffffff; --danger: #d64545; --ok: #2f9e63;
+  --warn: #c77d0a; --line: #d7e3ee; --focus: #ff8c00;
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px; line-height: 1.4;
+}
+body.large-text { font-size: 20px; }
+body.high-contrast {
+  --bg: #ffffff; --panel: #ffffff; --ink: #000000; --ink-soft: #111111;
+  --accent: #0033aa; --line: #000000; --focus: #000000;
+}
+
+#c { position: fixed; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
+
+/* ---------- top status bar ---------- */
+#hud {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+  display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: baseline;
+  padding: calc(6px + var(--sat)) calc(12px + var(--sar)) 6px calc(12px + var(--sal));
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border-bottom: 1px solid var(--line); font-size: 1em;
+}
+#hud b { font-weight: 600; margin-right: 6px; color: var(--ink-soft); }
+#hud .danger { color: var(--danger); font-weight: 700; }
+
+/* ---------- rails (wide desktop) ---------- */
+.rail {
+  position: fixed; top: 64px; bottom: 90px; z-index: 8; width: 240px;
+  padding: 12px; overflow: auto;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border: 1px solid var(--line); border-radius: 12px;
+}
+#rail-left { left: calc(10px + var(--sal)); }
+#rail-right { right: calc(10px + var(--sar)); width: 260px; }
+.rail h2, .rail h3 { margin: 0 0 8px; font-size: 1em; color: var(--ink-soft); }
+.rail p { margin: 4px 0; max-width: 70ch; }
+
+/* ---------- buttons ---------- */
+.btn {
+  appearance: none; border: 2px solid transparent; cursor: pointer;
+  font: inherit; font-size: 1.05em; font-weight: 600;
+  color: var(--accent-ink); background: var(--accent);
+  padding: 12px 22px; border-radius: 12px; min-height: 44px; min-width: 44px;
+}
+.btn:hover { filter: brightness(1.07); }
+.btn.secondary { background: var(--panel); color: var(--ink); border-color: var(--line); }
+.btn.small { padding: 8px 14px; font-size: .95em; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 3px solid var(--focus); outline-offset: 2px;
+}
+
+/* ---------- bottom action tray ---------- */
+#tray {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+  display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+  padding: 10px calc(10px + var(--sar)) calc(10px + var(--sab)) calc(10px + var(--sal));
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  border-top: 1px solid var(--line);
+}
+
+/* ---------- overlays ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 20; display: flex;
+  align-items: center; justify-content: center; padding: 20px;
+  background: rgba(20, 35, 55, .45);
+}
+.overlay[hidden] { display: none; }
+.panel {
+  background: var(--panel); color: var(--ink); border-radius: 16px;
+  border: 1px solid var(--line); box-shadow: 0 12px 40px rgba(20,35,55,.25);
+  padding: 22px; width: min(560px, 100%); max-height: min(84vh, 700px);
+  overflow: auto;
+}
+.panel h1, .panel h2 { margin: 0 0 10px; }
+.panel .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.panel p { max-width: 70ch; }
+
+#screen-title .panel { text-align: center; width: min(640px, 100%); }
+#screen-title .row { justify-content: center; }
+.game-title { font-size: 2.2em; margin: 4px 0 2px; letter-spacing: .5px; }
+.tagline { color: var(--ink-soft); margin-top: 0; }
+
+/* ---------- results breakdown ---------- */
+.breakdown { width: 100%; border-collapse: collapse; margin: 10px 0; }
+.breakdown td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
+.breakdown td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.breakdown .total td { font-weight: 700; border-bottom: none; }
+
+/* ---------- settings ---------- */
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.set-row label { flex: 1; }
+.set-row input[type="range"] { width: 150px; }
+
+/* ---------- journey map ---------- */
+.stage-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin: 10px 0; }
+.stage-grid button { min-height: 44px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; font: inherit; }
+.stage-grid button.done { background: var(--ok); color: #fff; }
+.stage-grid button.locked { opacity: .4; cursor: not-allowed; }
+.stage-grid button.current { border: 3px solid var(--accent); }
+
+/* ---------- scores ---------- */
+.scores-table { width: 100%; border-collapse: collapse; }
+.scores-table td, .scores-table th { padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--line); }
+
+/* ---------- tutorial / toast ---------- */
+#coach {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(86px + var(--sab)); z-index: 15;
+  background: var(--panel); border: 2px solid var(--accent); border-radius: 12px;
+  padding: 10px 16px; max-width: min(520px, 92vw); box-shadow: 0 6px 24px rgba(20,35,55,.25);
+}
+#coach[hidden] { display: none; }
+#toast {
+  position: fixed; top: calc(54px + var(--sat)); left: 50%; transform: translateX(-50%);
+  z-index: 30; background: var(--ink); color: var(--panel);
+  padding: 8px 18px; border-radius: 20px; font-size: .95em;
+}
+#toast[hidden] { display: none; }
+
+/* ---------- accessibility mirror ---------- */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+#board-mirror { position: fixed; left: calc(10px + var(--sal)); bottom: calc(86px + var(--sab)); z-index: 7; }
+#board-mirror details { background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; max-width: 320px; }
+#board-mirror summary { cursor: pointer; font-weight: 600; }
+
+/* ---------- countdown ---------- */
+#countdown {
+  position: fixed; inset: 0; z-index: 18; display: flex; align-items: center; justify-content: center;
+  font-size: 5em; font-weight: 800; color: var(--accent); pointer-events: none;
+  text-shadow: 0 2px 12px rgba(255,255,255,.8);
+}
+#countdown[hidden] { display: none; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1023px) {
+  .rail { display: none; }
+  .rail.open {
+    display: block; position: fixed; top: auto; bottom: calc(70px + var(--sab));
+    left: calc(8px + var(--sal)); right: calc(8px + var(--sar)); width: auto;
+    max-height: 50vh; z-index: 16;
+  }
+}
+@media (max-width: 640px) {
+  #hud { gap: 4px 12px; font-size: .92em; }
+  .stage-grid { grid-template-columns: repeat(5, 1fr); }
+  .panel { padding: 16px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  #hud { font-size: .85em; padding-top: calc(4px + var(--sat)); }
+  #tray { padding-top: 6px; padding-bottom: calc(6px + var(--sab)); }
+  .btn { padding: 10px 16px; }
+}
+body.reduced-motion * { transition: none !important; animation: none !important; }

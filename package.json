@@ -1,0 +1,10 @@
+{
+  "name": "transit-tangle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Transit Tangle - queue planning puzzle (Three.js)",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  }
+}

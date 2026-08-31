@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>smoke</title>
+<script>
+// capture everything
+window.__log = [];
+const orig = console.log;
+console.log = (...a) => { window.__log.push(a.join(' ')); orig.apply(console, a); };
+window.onerror = (m, s, l) => { window.__log.push('PAGEERROR: ' + m + ' @' + s + ':' + l); };
+</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- mirror of index.html body -->
+<canvas id="c" aria-hidden="true"></canvas>
+<header id="hud" aria-label="Game status">
+  <span><b>Mode</b><span id="hud-mode">—</span></span>
+  <span><b>Objective</b><span id="hud-objective">Clear every queue</span></span>
+  <span><b>Score</b><span id="hud-score">0</span></span>
+  <span><b>Moves</b><span id="hud-moves">0</span><span id="hud-limit" class="danger"></span></span>
+  <span><b>Holding</b><span id="hud-holding">0/0</span></span>
+  <span><b>Left</b><span id="hud-left">0</span></span>
+</header>
+<aside id="rail-left" class="rail"><h2>Objective</h2><p id="objective-text"></p>
+  <h3>Progress</h3><p id="progress-text">—</p><h3>Par</h3><p id="par-text">—</p></aside>
+<aside id="rail-right" class="rail"><h2>Round</h2><p id="round-text">—</p>
+  <div class="row"><button id="btn-hint">Hint</button><button id="btn-undo">Undo</button></div>
+  <div class="row"><button id="btn-camera">Reset camera</button></div></aside>
+<nav id="board-mirror"><details><summary>Board state</summary><div id="mirror-content" tabindex="0"></div></details></nav>
+<nav id="tray"><button id="btn-pause">Pause</button><button id="btn-undo2">Undo</button>
+  <button id="btn-hint2">Hint</button><button id="btn-help-open">Help</button><button id="btn-settings-open">Settings</button></nav>
+<div id="coach" hidden></div><div id="toast" hidden></div><div id="countdown" hidden>3</div>
+<div id="live" class="sr-only" aria-live="assertive"></div>
+<section id="screen-title" class="overlay"><div class="panel">
+  <h1 id="title-h" class="game-title">Transit Tangle</h1><p class="tagline"></p>
+  <button id="btn-play">Play</button><button id="btn-daily">Daily</button>
+  <button id="btn-journey">Journey</button><button id="btn-practice">Practice</button>
+  <button id="btn-challenge">Challenge</button><button id="btn-learn">Learn</button>
+  <button id="btn-scores">Scores</button><button id="btn-help2">Help</button><button id="btn-settings2">Settings</button>
+  <p id="daily-countdown"></p><p id="title-progress"></p></div></section>
+<section id="screen-setup" class="overlay" hidden><div class="panel">
+  <h2 id="setup-h"></h2><p id="setup-desc"></p><p id="setup-meta"></p>
+  <div id="setup-difficulty" class="row" hidden>
+    <button data-diff="easy">Easy</button><button data-diff="normal">Normal</button>
+    <button data-diff="hard">Hard</button><button data-diff="expert">Expert</button></div>
+  <button id="btn-setup-start">Start</button><button id="btn-setup-back">Back</button></div></section>
+<section id="screen-journey" class="overlay" hidden><div class="panel">
+  <h2 id="journey-h"></h2><div class="stage-grid" id="stage-grid"></div>
+  <button id="btn-journey-back">Back</button></div></section>
+<section id="screen-pause" class="overlay" hidden><div class="panel">
+  <h2 id="pause-h">Paused</h2>
+  <button id="btn-resume">Resume</button><button id="btn-restart">Restart</button>
+  <button id="btn-pause-settings">Settings</button><button id="btn-pause-help">Help</button>
+  <button id="btn-quit">Leave</button></div></section>
+<section id="screen-results" class="overlay" hidden><div class="panel">
+  <h2 id="results-h"></h2><p id="results-reason"></p>
+  <table class="breakdown" id="results-table"></table>
+  <p id="results-progress"></p><p id="results-achievements"></p>
+  <button id="btn-results-next">Next</button><button id="btn-results-retry">Retry</button>
+  <button id="btn-results-menu">Menu</button></div></section>
+<section id="screen-help" class="overlay" hidden><div class="panel">
+  <h2 id="help-h">Help</h2><div id="help-cards"></div><p id="help-controls"></p>
+  <button id="btn-help-close">Close</button></div></section>
+<section id="screen-settings" class="overlay" hidden><div class="panel">
+  <h2 id="settings-h">Settings</h2>
+  <input type="range" id="set-music"><input type="range" id="set-fx"><input type="range" id="set-ambience">
+  <select id="set-palette"><option value="default">d</option><option value="cvd">c</option><option value="contrast">h</option></select>
+  <select id="set-quality"><option value="auto">a</option><option value="high">h</option><option value="medium">m</option><option value="low">l</option></select>
+  <input type="checkbox" id="set-motion"><input type="checkbox" id="set-contrast">
+  <input type="checkbox" id="set-largetext"><input type="checkbox" id="set-lefthand">
+  <input type="checkbox" id="set-captions"><input type="checkbox" id="set-haptics">
+  <input type="checkbox" id="set-analytics">
+  <button id="btn-replay-tutorial">Replay tutorial</button>
+  <button id="btn-settings-close">Done</button></div></section>
+<section id="screen-scores" class="overlay" hidden><div class="panel">
+  <h2 id="scores-h">Scores</h2>
+  <button data-board="journey">J</button><button data-board="challenge">C</button><button data-board="daily">D</button>
+  <div id="scores-content"></div><button id="btn-scores-close">Close</button></div></section>
+
+<script src="rules.js"></script>
+<script type="module">
+  import * as THREE from './three.min.js';
+  window.THREE = THREE;
+  await import('./app.js');
+  const T = window.__tt;
+  const assert = (c, m) => { if (!c) throw new Error('ASSERT: ' + m); console.log('ok - ' + m); };
+  try {
+    assert(T && T.session.screen === 'title', 'boot lands on title');
+    // reduced motion -> skip countdown
+    T.store.settings.reducedMotion = true;
+    // start a practice round deterministically
+    T.startRound('practice', { difficulty: 'easy' });
+    T.session.seed = 42; // cosmetic only
+    assert(T.session.status === 'active', 'practice round active');
+    assert(T.session.state.q.length >= 3, 'queues generated');
+    // play to completion with hints
+    let guard = 0;
+    while (T.session.state.status === 'active' && guard++ < 100) {
+      const h = T.R.hint(T.session.state);
+      T.commitDispatch(h.v, h.q);
+    }
+    assert(T.session.state.status === 'won', 'hint-driven practice round won, status=' + T.session.state.status);
+    assert(T.session.screen === 'results', 'results screen shown');
+    const sc = T.R.scoreComponents(T.session.state);
+    assert(sc.total > 0, 'positive score ' + sc.total);
+    // undo path on a fresh round
+    T.startRound('practice', { difficulty: 'easy' });
+    const before = T.R.hashState(T.session.state);
+    const h0 = T.R.hint(T.session.state);
+    T.commitDispatch(h0.v, h0.q);
+    T.undo();
+    assert(T.R.hashState(T.session.state) === before, 'undo restores exact state hash');
+    // invalid dispatch increments counter without crashing
+    const bad = T.R.dispatch(T.session.state, 99, 99);
+    assert(!bad.ok && bad.state.invalid === T.session.state.invalid + 1, 'invalid dispatch accounted');
+    // journey round with move-limit stage
+    T.startRound('journey', { stage: 30 });
+    assert(T.session.state.moveLimit > 0, 'mastery stage has move limit');
+    // daily determinism across two starts
+    T.startRound('daily');
+    const d1 = T.R.hashState(T.session.state0);
+    T.startRound('daily');
+    assert(T.R.hashState(T.session.state0) === d1, 'daily seed immutable within the day');
+    console.log('SMOKE PASS');
+  } catch (e) {
+    console.log('SMOKE FAIL: ' + e.message);
+  }
+  document.title = window.__log.some(l => l.startsWith('SMOKE FAIL') || l.startsWith('PAGEERROR')) ? 'FAIL' : 'PASS';
+</script>
+</body>
+</html>

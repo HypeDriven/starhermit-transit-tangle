@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="description" content="Transit Tangle — dispatch vehicles into matching passenger queues without filling the holding lane." />
+<title>Transit Tangle</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+
+<!-- ============ persistent HUD ============ -->
+<header id="hud" aria-label="Game status">
+  <span><b>Mode</b><span id="hud-mode">—</span></span>
+  <span><b>Objective</b><span id="hud-objective">Clear every queue</span></span>
+  <span><b>Score</b><span id="hud-score">0</span></span>
+  <span><b>Moves</b><span id="hud-moves">0</span><span id="hud-limit" class="danger"></span></span>
+  <span><b>Holding</b><span id="hud-holding">0/0</span></span>
+  <span><b>Left</b><span id="hud-left">0</span></span>
+</header>
+
+<!-- ============ rails ============ -->
+<aside id="rail-left" class="rail" aria-label="Objective and progress">
+  <h2>Objective</h2>
+  <p id="objective-text">Dispatch vehicles into matching passenger queues. Win by clearing every passenger. Lose if the holding lane overflows.</p>
+  <h3>Progress</h3>
+  <p id="progress-text">—</p>
+  <h3>Par</h3>
+  <p id="par-text">—</p>
+</aside>
+<aside id="rail-right" class="rail" aria-label="Status and actions">
+  <h2>Round</h2>
+  <p id="round-text">—</p>
+  <h3>Assist</h3>
+  <div class="row">
+    <button type="button" class="btn small secondary" id="btn-hint">Hint</button>
+    <button type="button" class="btn small secondary" id="btn-undo">Undo</button>
+  </div>
+  <h3>View</h3>
+  <div class="row">
+    <button type="button" class="btn small secondary" id="btn-camera">Reset camera</button>
+  </div>
+</aside>
+
+<!-- ============ accessibility mirror (navigable board model) ============ -->
+<nav id="board-mirror" aria-label="Board state, text form">
+  <details>
+    <summary>Board state (text)</summary>
+    <div id="mirror-content" tabindex="0"></div>
+  </details>
+</nav>
+
+<!-- ============ bottom action tray ============ -->
+<nav id="tray" aria-label="Actions">
+  <button type="button" class="btn secondary" id="btn-pause" aria-label="Pause (Escape)">Pause</button>
+  <button type="button" class="btn secondary" id="btn-undo2">Undo</button>
+  <button type="button" class="btn secondary" id="btn-hint2">Hint</button>
+  <button type="button" class="btn secondary" id="btn-help-open">Help</button>
+  <button type="button" class="btn secondary" id="btn-settings-open">Settings</button>
+</nav>
+
+<div id="coach" role="note" aria-live="polite" hidden></div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+<div id="countdown" aria-hidden="true" hidden>3</div>
+<div id="live" class="sr-only" aria-live="assertive"></div>
+
+<!-- ============ title / mode select ============ -->
+<section id="screen-title" class="overlay" aria-labelledby="title-h">
+  <div class="panel">
+    <h1 id="title-h" class="game-title">Transit Tangle</h1>
+    <p class="tagline">Dispatch vehicles into matching queues — don't let the holding lane overflow.</p>
+    <div class="row">
+      <button type="button" class="btn" id="btn-play">Play</button>
+      <button type="button" class="btn secondary" id="btn-daily">Daily Challenge</button>
+    </div>
+    <div class="row">
+      <button type="button" class="btn secondary" id="btn-journey">Journey</button>
+      <button type="button" class="btn secondary" id="btn-practice">Practice</button>
+      <button type="button" class="btn secondary" id="btn-challenge">Challenge</button>
+      <button type="button" class="btn secondary" id="btn-learn">Learn</button>
+    </div>
+    <div class="row">
+      <button type="button" class="btn small secondary" id="btn-scores">Scores</button>
+      <button type="button" class="btn small secondary" id="btn-help2">Help</button>
+      <button type="button" class="btn small secondary" id="btn-settings2">Settings</button>
+    </div>
+    <p id="daily-countdown" aria-live="polite"></p>
+    <p id="title-progress"></p>
+  </div>
+</section>
+
+<!-- ============ mode setup (practice / challenge) ============ -->
+<section id="screen-setup" class="overlay" aria-labelledby="setup-h" hidden>
+  <div class="panel">
+    <h2 id="setup-h">Setup</h2>
+    <p id="setup-desc"></p>
+    <p id="setup-meta"></p>
+    <div id="setup-difficulty" class="row" hidden>
+      <button type="button" class="btn secondary" data-diff="easy">Easy</button>
+      <button type="button" class="btn secondary" data-diff="normal">Normal</button>
+      <button type="button" class="btn secondary" data-diff="hard">Hard</button>
+      <button type="button" class="btn secondary" data-diff="expert">Expert</button>
+    </div>
+    <div class="row">
+      <button type="button" class="btn" id="btn-setup-start">Start</button>
+      <button type="button" class="btn secondary" id="btn-setup-back">Back</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ journey map ============ -->
+<section id="screen-journey" class="overlay" aria-labelledby="journey-h" hidden>
+  <div class="panel">
+    <h2 id="journey-h">Journey — 40 stages</h2>
+    <p>New concepts arrive one at a time, combine with what you know, then mastery stages test you with move limits.</p>
+    <div class="stage-grid" id="stage-grid"></div>
+    <div class="row">
+      <button type="button" class="btn secondary" id="btn-journey-back">Back</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ pause ============ -->
+<section id="screen-pause" class="overlay" aria-labelledby="pause-h" hidden>
+  <div class="panel">
+    <h2 id="pause-h">Paused</h2>
+    <div class="row">
+      <button type="button" class="btn" id="btn-resume">Resume</button>
+      <button type="button" class="btn secondary" id="btn-restart">Restart round</button>
+    </div>
+    <div class="row">
+      <button type="button" class="btn secondary" id="btn-pause-settings">Settings</button>
+      <button type="button" class="btn secondary" id="btn-pause-help">Help</button>
+      <button type="button" class="btn secondary" id="btn-quit">Leave round</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ results ============ -->
+<section id="screen-results" class="overlay" aria-labelledby="results-h" hidden>
+  <div class="panel">
+    <h2 id="results-h">Round over</h2>
+    <p id="results-reason"></p>
+    <table class="breakdown" id="results-table" aria-label="Score breakdown"></table>
+    <p id="results-progress"></p>
+    <p id="results-achievements"></p>
+    <div class="row">
+      <button type="button" class="btn" id="btn-results-next">Next</button>
+      <button type="button" class="btn secondary" id="btn-results-retry">Retry</button>
+      <button type="button" class="btn secondary" id="btn-results-menu">Menu</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ help ============ -->
+<section id="screen-help" class="overlay" aria-labelledby="help-h" hidden>
+  <div class="panel">
+    <h2 id="help-h">How to play</h2>
+    <div id="help-cards"></div>
+    <h3>Controls</h3>
+    <p id="help-controls"></p>
+    <div class="row">
+      <button type="button" class="btn" id="btn-help-close">Close</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ settings ============ -->
+<section id="screen-settings" class="overlay" aria-labelledby="settings-h" hidden>
+  <div class="panel">
+    <h2 id="settings-h">Settings</h2>
+    <div class="set-row"><label for="set-music">Music volume</label><input type="range" id="set-music" min="0" max="100" value="50" /></div>
+    <div class="set-row"><label for="set-fx">Effects volume</label><input type="range" id="set-fx" min="0" max="100" value="80" /></div>
+    <div class="set-row"><label for="set-ambience">Ambience volume</label><input type="range" id="set-ambience" min="0" max="100" value="40" /></div>
+    <div class="set-row"><label for="set-palette">Color palette</label>
+      <select id="set-palette">
+        <option value="default">Default</option>
+        <option value="cvd">Color-vision safe</option>
+        <option value="contrast">High contrast</option>
+      </select></div>
+    <div class="set-row"><label for="set-quality">Graphics quality</label>
+      <select id="set-quality">
+        <option value="auto">Auto</option><option value="high">High</option>
+        <option value="medium">Medium</option><option value="low">Low</option>
+      </select></div>
+    <div class="set-row"><label for="set-motion">Reduced motion</label><input type="checkbox" id="set-motion" /></div>
+    <div class="set-row"><label for="set-contrast">High contrast UI</label><input type="checkbox" id="set-contrast" /></div>
+    <div class="set-row"><label for="set-largetext">Larger text</label><input type="checkbox" id="set-largetext" /></div>
+    <div class="set-row"><label for="set-lefthand">Left-handed controls</label><input type="checkbox" id="set-lefthand" /></div>
+    <div class="set-row"><label for="set-captions">Text cues for sounds</label><input type="checkbox" id="set-captions" checked /></div>
+    <div class="set-row"><label for="set-haptics">Haptics (vibration)</label><input type="checkbox" id="set-haptics" checked /></div>
+    <div class="set-row"><label for="set-analytics">Anonymous usage stats</label><input type="checkbox" id="set-analytics" /></div>
+    <div class="row">
+      <button type="button" class="btn secondary" id="btn-replay-tutorial">Replay tutorial</button>
+      <button type="button" class="btn" id="btn-settings-close">Done</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ scores ============ -->
+<section id="screen-scores" class="overlay" aria-labelledby="scores-h" hidden>
+  <div class="panel">
+    <h2 id="scores-h">Scores</h2>
+    <div class="row">
+      <button type="button" class="btn small secondary" data-board="journey">Journey</button>
+      <button type="button" class="btn small secondary" data-board="challenge">Challenge</button>
+      <button type="button" class="btn small secondary" data-board="daily">Daily</button>
+    </div>
+    <div id="scores-content" aria-live="polite"></div>
+    <div class="row">
+      <button type="button" class="btn" id="btn-scores-close">Close</button>
+    </div>
+  </div>
+</section>
+
+<script src="rules.js"></script>
+<script type="module">
+  import * as THREE from './three.min.js';
+  window.THREE = THREE;
+  await import('./app.js');
+</script>
+</body>
+</html>
