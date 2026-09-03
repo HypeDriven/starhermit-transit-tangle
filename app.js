@@ -676,7 +676,7 @@
       if (!store.achievements.includes(key)) {
         store.achievements.push(key);
         newAch.push(label);
-        net.post('api/achievements', { profile: profileId, key }).catch(() => {});
+        if (net.online) net.post('api/achievements', { profile: profileId, key }).catch(() => {});
       }
     }
     if (won) {
@@ -878,6 +878,7 @@
     },
     async showScores(board) {
       const el = $('scores-content');
+      if (!net.online) { el.textContent = 'Score boards unavailable offline. Your local progress is safe.'; return; }
       el.textContent = 'Loading…';
       try {
         const j = await net.get('api/scores?board=' + encodeURIComponent(board));
@@ -994,9 +995,9 @@
   function kbTargets() {
     if (!session.state) return [];
     if (session.selectedVehicle >= 0) {
-      return session.state.q.map((l, i) => i).filter(i => l.length > 0);
+      return session.state.q.map((l, i) => (l.length > 0 ? i : -1)).filter(i => i >= 0);
     }
-    return session.state.v.map((v, i) => i).filter(i => v.n > 0);
+    return session.state.v.map((veh, i) => (veh.n > 0 ? i : -1)).filter(i => i >= 0);
   }
   document.addEventListener('keydown', ev => {
     if (ev.target && /INPUT|SELECT|TEXTAREA/.test(ev.target.tagName)) return;
