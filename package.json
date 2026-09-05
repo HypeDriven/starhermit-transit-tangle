@@ -5,6 +5,7 @@
   "description": "Transit Tangle - queue planning puzzle (Three.js)",
   "scripts": {
     "start": "node server.js",
-    "test": "node test.js"
+    "test": "node test.js",
+    "test:e2e": "node tests/e2e.mjs"
   }
 }

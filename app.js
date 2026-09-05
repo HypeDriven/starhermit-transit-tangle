@@ -437,6 +437,9 @@
         pip.position.set(-0.5 + k * 0.32, 1.45, 0);
         grp.add(pip);
       }
+      // propagate vehicle pick metadata to hit-testable children so a
+      // pointer/touch tap on the body/cab/pips selects the vehicle
+      grp.traverse(ch => { ch.userData.vehicleIndex = vi; });
       grp.position.set(vPos[vi].x, 0, vPos[vi].z);
       grp.userData.vehicleIndex = vi;
       if (veh.n < 1) grp.children.forEach(ch => { ch.material = plainMat(0x9aa7b2); });
