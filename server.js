@@ -16,7 +16,7 @@ const R = require('./rules.js');
 
 const PORT = process.env.PORT || 8080;
 const ROOT = __dirname;
-const DATA_DIR = path.join(ROOT, 'data');
+const DATA_DIR = process.env.TRANSIT_TANGLE_DATA_DIR || path.join(ROOT, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const MAX_BODY = 64 * 1024;
 
@@ -94,7 +94,12 @@ function handleApi(req, res, urlPath, query) {
     const rows = db.scores
       .filter(s => s.board === board)
       .map(s => ({ name: s.name, score: s.score, result: s.result, ticks: s.ticks, invalid: s.invalid, date: s.date, session: s.session }))
-      .sort((a, b) => b.score - a.score || a.ticks - b.ticks)
+      .sort((a, b) =>
+        (b.result === 'won') - (a.result === 'won') ||
+        b.score - a.score ||
+        a.invalid - b.invalid ||
+        a.ticks - b.ticks ||
+        String(a.session).localeCompare(String(b.session)))
       .slice(0, 50);
     return sendJson(res, 200, { board, validated: true, scores: rows });
   }
@@ -114,10 +119,12 @@ function handleApi(req, res, urlPath, query) {
       try { state0 = R.genLevel(cfg); } catch (e) { return sendJson(res, 422, { error: 'defective-content' }); }
       const v = R.verifyReplay(env, state0);
       if (!v.valid) return sendJson(res, 422, { error: 'replay-invalid', detail: v.reason });
+      // trust only the re-simulated state — client-claimed ticks/result are not hashed
+      const sc = R.scoreComponents(v.state);
       const entry = {
-        board: boardFor(env.cfgId), name, score: env.score.total,
-        result: env.result, ticks: env.ticks, invalid: env.score.invalidPenalty / 20,
-        assists: 0, ruleset: R.RULES_VERSION, contentVersion: R.CONTENT_VERSION,
+        board: boardFor(env.cfgId), name, score: sc.total,
+        result: v.state.status, ticks: v.state.tick, invalid: v.state.invalid,
+        assists: msg.assists ? 1 : 0, ruleset: R.RULES_VERSION, contentVersion: R.CONTENT_VERSION,
         seed: env.seed, session: String(env.session || 'anon').slice(0, 40),
         date: new Date().toISOString()
       };
@@ -164,6 +171,7 @@ function readBody(req, cb) {
 /* ---------------- static files ---------------- */
 function serveStatic(req, res, urlPath) {
   if (urlPath === '/') urlPath = '/index.html';
+  if (urlPath.split('/').some(part => part.startsWith('.'))) { res.writeHead(403); return res.end('forbidden'); }
   const rel = path.normalize(urlPath).replace(/^([/\\])+/, '');
   const file = path.join(ROOT, rel);
   if (!file.startsWith(ROOT + path.sep) || rel.startsWith('data' + path.sep) || rel === 'data') {

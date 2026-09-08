@@ -6,6 +6,11 @@
   "scripts": {
     "start": "node server.js",
     "test": "node test.js",
+    "test:server": "node --test tests/server.test.mjs",
     "test:e2e": "node tests/e2e.mjs"
+  },
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "devDependencies": {
+    "playwright-core": "^1.63.0"
   }
 }

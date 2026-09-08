@@ -250,6 +250,22 @@ async function runPass(browser, name, ctxOpts, { full }) {
     await page.screenshot({ path: SHOT('play', name) });
     ok(`${name}: Practice (Easy) active — ${st0.v} vehicles, ${st0.q.length} queues, holding ${st0.h}/${st0.caps}`);
 
+    // regression: a boarding dispatch must announce "Boarded N passenger(s)".
+    // events.boarded is an array; a past bug interpolated it raw, producing
+    // "Boarded [object Object]…" and suppressing the boarding sound/caption.
+    // A matching legal action always exists at tick 0 (vehicles are generated
+    // for every demanded color).
+    const mAct = await page.evaluate(() =>
+      window.__tt.R.legalActions(window.__tt.session.state).find((a) => a.match) ?? null);
+    if (!mAct) throw new Error('expected a matching legal action at round start');
+    await kbDispatch(page, mAct.vehicle, mAct.queue, st0.tick);
+    const liveTxt = (await page.textContent('#live')) || '';
+    if (!/Boarded \d+ passenger/.test(liveTxt)) throw new Error(`boarding announcement broken: "${liveTxt}"`);
+    if (/object Object/.test(liveTxt)) throw new Error(`announcement leaks raw array: "${liveTxt}"`);
+    const toastTxt = (await page.textContent('#toast')) || '';
+    if (/object Object/.test(toastTxt)) throw new Error(`sound caption leaks raw array: "${toastTxt}"`);
+    ok(`${name}: boarding dispatch announces "Boarded N passengers" (live region + caption)`);
+
     // pointer behavior (fixed defect): tapping a vehicle selects it, and a
     // full pointer dispatch (vehicle tap -> queue tap) advances the round.
     const pokDispatch = await (async () => {
@@ -302,6 +318,18 @@ async function runPass(browser, name, ctxOpts, { full }) {
       await page.click('#btn-resume');
       await waitActive(page);
       ok(`${name}: pause and resume work`);
+
+      // Escape from settings opened via the pause screen returns to the pause
+      // screen (it must not silently resume the round).
+      await page.click('#btn-pause');
+      await overlayVisible(page, 'screen-pause');
+      await page.click('#btn-pause-settings');
+      await overlayVisible(page, 'screen-settings');
+      await page.keyboard.press('Escape');
+      await overlayVisible(page, 'screen-pause');
+      await page.click('#btn-resume');
+      await waitActive(page);
+      ok(`${name}: Escape from pause-settings returns to the pause screen`);
 
       // hint via the visible Hint button
       const beforeHintUsed = await page.evaluate(() => window.__tt.session.usedAssist);

@@ -556,7 +556,7 @@
       session.cfg = R.dailyConfig(utcDateInt());
     } else if (mode === 'practice') {
       session.difficulty = opts.difficulty || session.difficulty;
-      session.seed = (Math.random() * 0xffffffff) >>> 0;
+      session.seed = opts.seed != null ? opts.seed : (Math.random() * 0xffffffff) >>> 0;
       session.cfg = R.practiceConfig(session.difficulty, session.seed);
     } else if (mode === 'challenge') {
       session.seed = opts.seed != null ? opts.seed : utcDateInt();
@@ -620,7 +620,7 @@
     }
     session.selectedVehicle = -1;
     const ev = r.events;
-    if (ev.match) audio.dispatch(ev.boarded, ev.full); else audio.mismatch();
+    if (ev.match) audio.dispatch(ev.boarded.length, ev.full); else audio.mismatch();
     haptic(ev.match ? 15 : 40);
     rebuildBoard(ev);
     ui.updateAll();
@@ -707,7 +707,7 @@
     let submitted = null;
     if (session.ranked && net.online) {
       const env = R.replayEnvelope(session.cfg, session.state0, session.commands, finalState, sessionId);
-      submitted = net.post('api/scores', { name: 'guest', replay: env })
+      submitted = net.post('api/scores', { name: 'guest', assists: session.usedAssist ? 1 : 0, replay: env })
         .then(() => 'Score submitted to the validated board.')
         .catch(e => 'Score not accepted: ' + e.message);
     }
@@ -733,7 +733,7 @@
     announce(el.textContent);
   }
   function coachAdvance(ev, state) {
-    if (coachStep === 0 && ev.boarded > 0) coachForLesson(session.lesson, 1);
+    if (coachStep === 0 && ev.boarded.length > 0) coachForLesson(session.lesson, 1);
     if (state.status === 'won') hideCoach();
   }
   function hideCoach() { $('coach').hidden = true; }
@@ -757,7 +757,8 @@
   function announceEvent(ev, s) {
     let msg;
     if (ev.match) {
-      msg = 'Boarded ' + ev.boarded + ' passenger' + (ev.boarded === 1 ? '' : 's') +
+      const nb = ev.boarded.length;
+      msg = 'Boarded ' + nb + ' passenger' + (nb === 1 ? '' : 's') +
         (ev.full ? ', vehicle full' : '') +
         (ev.fromHolding ? ', ' + ev.fromHolding + ' collected from holding' : '') + '.';
     } else {
@@ -889,7 +890,6 @@
         el.innerHTML = '<table class="scores-table"><tr><th>#</th><th>Name</th><th>Score</th><th>Moves</th><th>Result</th></tr>' +
           j.scores.map((s, i) => '<tr><td>' + (i + 1) + '</td><td></td><td>' + s.score + '</td><td>' + s.ticks + '</td><td>' + s.result + '</td></tr>').join('') +
           '</table>';
-        el.querySelectorAll('tbody tr, tr').forEach(() => {});
         // insert names safely (no HTML injection)
         const rows = el.querySelectorAll('tr');
         j.scores.forEach((s, i) => { if (rows[i + 1]) rows[i + 1].children[1].textContent = s.name; });
@@ -913,9 +913,17 @@
     $('set-analytics').checked = s.analytics;
     audio.applyVolumes();
     computeQuality();
+    applyHandedness();
     rebuildAll();
     saveStore();
     funnel('settings-change');
+  }
+  function applyHandedness() {
+    const on = store.settings.leftHand;
+    $('rail-left').style.left = on ? 'auto' : '';
+    $('rail-left').style.right = on ? 'calc(10px + var(--sar))' : '';
+    $('rail-right').style.right = on ? 'auto' : '';
+    $('rail-right').style.left = on ? 'calc(10px + var(--sal))' : '';
   }
   function bindSettings() {
     const s = store.settings;
@@ -1010,7 +1018,9 @@
         session.selectedVehicle = -1; rebuildBoard(); announce('Selection cancelled');
       } else if (session.screen === 'active') pauseGame();
       else if (session.screen === 'paused') resumeGame();
-      else if (['help', 'settings', 'scores', 'setup', 'journey'].includes(session.screen)) setScreen(session.state && session.state.status === 'active' ? 'active' : 'title');
+      else if (session.screen === 'help') setScreen(helpReturn);
+      else if (session.screen === 'settings') setScreen(settingsReturn);
+      else if (['scores', 'setup', 'journey'].includes(session.screen)) setScreen(session.state && session.state.status === 'active' ? 'active' : 'title');
       ev.preventDefault();
       return;
     }
@@ -1122,13 +1132,13 @@
     $('btn-settings2').addEventListener('click', () => { settingsReturn = 'title'; setScreen('settings'); });
     $('btn-help-open').addEventListener('click', () => { helpReturn = session.screen; setScreen('help'); });
     $('btn-settings-open').addEventListener('click', () => { settingsReturn = session.screen; setScreen('settings'); });
-    $('btn-help-close').addEventListener('click', () => setScreen(helpReturn === 'active' ? 'active' : helpReturn));
-    $('btn-settings-close').addEventListener('click', () => setScreen(settingsReturn === 'active' ? 'active' : settingsReturn));
+    $('btn-help-close').addEventListener('click', () => setScreen(helpReturn));
+    $('btn-settings-close').addEventListener('click', () => setScreen(settingsReturn));
     $('btn-pause').addEventListener('click', pauseGame);
     $('btn-resume').addEventListener('click', resumeGame);
     $('btn-restart').addEventListener('click', () => {
       const m = session.mode;
-      if (m === 'practice') startRound('practice', { difficulty: session.difficulty });
+      if (m === 'practice') startRound('practice', { difficulty: session.difficulty, seed: session.seed });
       else if (m === 'challenge') startRound('challenge');
       else if (m === 'daily') startRound('daily');
       else if (m === 'learn') startRound('learn', { lesson: session.lesson });
@@ -1209,11 +1219,6 @@
     setInterval(tickDailyCountdown, 1000);
     requestAnimationFrame(loop);
     funnel('boot');
-    // left-handed: swap rails
-    if (store.settings.leftHand) {
-      $('rail-left').style.left = 'auto'; $('rail-left').style.right = 'calc(10px + var(--sar))';
-      $('rail-right').style.right = 'auto'; $('rail-right').style.left = 'calc(10px + var(--sal))';
-    }
   }
   boot();
   // debug/test handle (read-only rules access plus flow control)
