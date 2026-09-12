@@ -16,7 +16,7 @@
       reducedMotion: false, highContrast: false, largeText: false,
       leftHand: false, captions: true, haptics: true, analytics: false
     },
-    progress: { journeyDone: [], journeyUnlocked: 0, tutorialDone: false, daysPlayed: [], wins: 0, streak: 0 },
+    progress: { journeyDone: [], journeyUnlocked: 0, tutorialDone: false, daysPlayed: [], wins: 0, streak: 0, best: {} },
     achievements: []
   };
   let store;
@@ -24,7 +24,7 @@
   catch (e) { store = JSON.parse(JSON.stringify(defaults)); }
   store.settings = Object.assign({}, defaults.settings, store.settings);
   store.progress = Object.assign({}, defaults.progress, store.progress);
-  function saveStore() { try { localStorage.setItem(LS_KEY, JSON.stringify(store)); } catch (e) {} }
+  function saveStore() { try { localStorage.setItem(LS_KEY, JSON.stringify(store)); } catch (e) {} queueCloudSave(); }
   const sessionId = 's-' + Math.random().toString(36).slice(2, 10);
   const profileId = (() => {
     let id = localStorage.getItem('tt-profile');
@@ -43,13 +43,130 @@
     } catch (e) {}
   }
 
-  /* ============================== net ============================== */
+  /* ============================== net (platform adapter) ============================== */
+  // Hosted mode (StarHermit) activates iff a launch token was read from the URL:
+  // the fragment #game_token=<jwt> is read once and stripped; ?token=/?launch=
+  // query fallbacks exist for local dev only. Every REST call carries the token
+  // as Authorization: Bearer. The token is refreshed every 45 min through
+  // POST /api/v1/games/{slug}/launch-token and is never persisted.
+  // Local dev (npm start) keeps talking to this repo's own server.js instead.
+
+  // ---- begin ZIP helpers (stored entries only, no compression) ----
+  // Used for the platform cloud-save slot (single JSON entry). Any change here
+  // must be re-validated against a strict reader (python3 zipfile / unzip -t).
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(bytes) {
+    let c = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  function zipStore(name, dataBytes) {
+    const enc = new TextEncoder();
+    const nameB = enc.encode(name);
+    const crc = crc32(dataBytes);
+    const out = [];
+    const u16 = (v) => out.push(v & 0xff, (v >> 8) & 0xff);
+    const u32 = (v) => out.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
+    u32(0x04034b50); u16(20); u16(0); u16(0); u16(0); u16(0);
+    u32(crc); u32(dataBytes.length); u32(dataBytes.length);
+    u16(nameB.length); u16(0);
+    const local = out.length;
+    const head = new Uint8Array(out);
+    const cd = [];
+    const c16 = (v) => cd.push(v & 0xff, (v >> 8) & 0xff);
+    const c32 = (v) => cd.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
+    c32(0x02014b50); c16(20); c16(20); c16(0); c16(0); c16(0); c16(0);
+    c32(crc); c32(dataBytes.length); c32(dataBytes.length);
+    c16(nameB.length); c16(0); c16(0); c16(0); c16(0); c32(0); c32(0); // attrs + local-header offset
+    const cdHead = new Uint8Array(cd);
+    const cdOff = head.length + nameB.length + dataBytes.length;
+    const parts = [head, nameB, dataBytes, cdHead, nameB];
+    const eocd = [];
+    const e32 = (v) => eocd.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
+    const e16 = (v) => eocd.push(v & 0xff, (v >> 8) & 0xff);
+    e32(0x06054b50); e16(0); e16(0); e16(1); e16(1);
+    e32(cdHead.length + nameB.length); e32(cdOff); e16(0);
+    parts.push(new Uint8Array(eocd));
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const buf = new Uint8Array(total);
+    let o = 0;
+    for (const p of parts) { buf.set(p, o); o += p.length; }
+    return buf;
+  }
+  function unzipFirstEntry(zipBytes) {
+    // Stored single-entry reader: scan local headers for compression 0.
+    const dv = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
+    let off = 0;
+    while (off + 30 <= zipBytes.length && dv.getUint32(off, true) === 0x04034b50) {
+      const method = dv.getUint16(off + 8, true);
+      const size = dv.getUint32(off + 18, true);
+      const nameLen = dv.getUint16(off + 26, true);
+      const extraLen = dv.getUint16(off + 28, true);
+      const dataOff = off + 30 + nameLen + extraLen;
+      if (method !== 0) throw new Error('unsupported zip entry');
+      return zipBytes.slice(dataOff, dataOff + size);
+    }
+    throw new Error('bad zip');
+  }
+  function bytesToBase64(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000)
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  function base64ToBytes(b64) {
+    const s = atob(b64);
+    const b = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+    return b;
+  }
+  // ---- end ZIP helpers ----
+
+  function readLaunchToken() {
+    let raw = null;
+    const h = window.location.hash || '';
+    const m = /[#&]game_token=([^&]+)/.exec(h);
+    if (m) {
+      raw = decodeURIComponent(m[1]);
+      try { // strip the token from the URL (read once)
+        const clean = h.replace(/[#&]game_token=[^&]*/g, '').replace(/^#&/, '#');
+        history.replaceState(null, document.title,
+          window.location.pathname + window.location.search + (clean === '#' ? '' : clean));
+      } catch (e) {}
+    }
+    if (!raw) { // local-dev fallbacks; the platform always uses the fragment
+      try {
+        const q = new URLSearchParams(window.location.search);
+        raw = q.get('token') || q.get('launch') || q.get('game_token') || q.get('launch_token');
+      } catch (e) {}
+    }
+    return raw;
+  }
+  function decodeJwtPayload(tok) {
+    try {
+      const part = String(tok).split('.')[1] || '';
+      const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+      return JSON.parse(new TextDecoder().decode(base64ToBytes(b64 + '='.repeat((4 - b64.length % 4) % 4))));
+    } catch (e) { return null; }
+  }
+
   const net = {
     offset: 0, online: false,
+    hosted: false, token: null, userId: null, slug: null, nickname: null,
+    syncState: 'offline', // saving | synced | offline — shown beside the player name
+    authHeaders() { return net.hosted && net.token ? { Authorization: 'Bearer ' + net.token } : {}; },
     async syncTime() {
       try {
         const t0 = Date.now();
-        const r = await fetch('api/v1/time');
+        const r = await fetch('/api/v1/time', { headers: net.authHeaders() });
         const j = await r.json();
         net.offset = j.now - (t0 + Date.now()) / 2;
         net.online = true;
@@ -58,7 +175,7 @@
     now() { return Date.now() + net.offset; },
     async post(pathname, body) {
       const r = await fetch(pathname, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, net.authHeaders()),
         body: JSON.stringify(body)
       });
       const j = await r.json().catch(() => ({}));
@@ -66,12 +183,145 @@
       return j;
     },
     async get(pathname) {
-      const r = await fetch(pathname);
+      const r = await fetch(pathname, { headers: net.authHeaders() });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || ('http-' + r.status));
       return j;
     }
   };
+
+  /* ---- hosted identity, token refresh, cloud save ---- */
+  const SAVE_ENTRY = 'transit-tangle-save.json';
+  let refreshTimer = null, cloudTimer = null, cloudDirty = false;
+  const profileCache = {};
+
+  function displayName() {
+    return net.hosted
+      ? (net.nickname || 'Player ' + String(net.userId || '').slice(0, 8))
+      : 'guest';
+  }
+  function updateAccountLine() {
+    const el = $('account-line');
+    if (!el) return;
+    if (!net.hosted) { el.hidden = true; return; }
+    el.hidden = false;
+    const syncTxt = {
+      saving: 'saving…', synced: 'synced',
+      offline: 'offline — will sync when you play'
+    }[net.syncState] || net.syncState;
+    el.textContent = 'Playing as ' + (net.nickname || '…') + ' · progress ' + syncTxt;
+  }
+  async function profileNickname(userId) {
+    const id = String(userId || '');
+    if (!id) return 'Player';
+    if (profileCache[id]) return profileCache[id];
+    let nick = null;
+    try {
+      const j = await net.get('/api/v1/users/' + encodeURIComponent(id) + '/profile');
+      nick = j && j.nickname ? String(j.nickname) : null; // never usernames
+    } catch (e) {}
+    profileCache[id] = nick || ('Player ' + id.slice(0, 8));
+    return profileCache[id];
+  }
+  async function loadProfile() {
+    if (!net.hosted || !net.userId) { updateAccountLine(); return; }
+    net.nickname = await profileNickname(net.userId);
+    updateAccountLine();
+  }
+  async function refreshToken() {
+    clearTimeout(refreshTimer);
+    if (!net.hosted || !net.token || !net.slug) return;
+    try {
+      const r = await fetch('/api/v1/games/' + encodeURIComponent(net.slug) + '/launch-token', {
+        method: 'POST', headers: net.authHeaders()
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error('http-' + r.status);
+      if (j && j.token) net.token = j.token; // scoped tokens may re-mint
+      refreshTimer = setTimeout(refreshToken, 45 * 60 * 1000);
+    } catch (e) {
+      refreshTimer = setTimeout(refreshToken, 60 * 1000); // retry failures ~60 s
+    }
+  }
+  function storeDoc() {
+    return {
+      v: store.v, settings: store.settings, progress: store.progress,
+      achievements: store.achievements, savedAt: Date.now()
+    };
+  }
+  function applyStoreDoc(doc) {
+    if (!doc || typeof doc !== 'object') return false;
+    // conflict resolution prefers the remote copy field-by-field
+    store.settings = Object.assign({}, defaults.settings, store.settings, doc.settings);
+    store.progress = Object.assign({}, defaults.progress, store.progress, doc.progress);
+    if (Array.isArray(doc.achievements)) store.achievements = doc.achievements.slice();
+    return true;
+  }
+  function queueCloudSave() {
+    if (!net.hosted || !net.slug) return;
+    cloudDirty = true;
+    net.syncState = 'saving';
+    updateAccountLine();
+    clearTimeout(cloudTimer);
+    cloudTimer = setTimeout(flushCloudSave, 2000); // debounced
+  }
+  async function flushCloudSave() {
+    clearTimeout(cloudTimer);
+    cloudTimer = null;
+    if (!net.hosted || !net.slug || !cloudDirty) return;
+    net.syncState = 'saving';
+    updateAccountLine();
+    try {
+      const bytes = new TextEncoder().encode(JSON.stringify(storeDoc()));
+      const r = await fetch('/api/v1/me/cloud-saves/' + encodeURIComponent(net.slug), {
+        method: 'PUT',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, net.authHeaders()),
+        body: JSON.stringify({ dataBase64: bytesToBase64(zipStore(SAVE_ENTRY, bytes)) })
+      });
+      if (!r.ok) throw new Error('http-' + r.status);
+      cloudDirty = false;
+      net.syncState = 'synced';
+    } catch (e) {
+      net.syncState = 'offline'; // stays dirty; retried on next change / pagehide
+    }
+    updateAccountLine();
+  }
+  async function loadCloudSave() {
+    if (!net.hosted || !net.slug) return;
+    try {
+      const r = await fetch('/api/v1/me/cloud-saves/' + encodeURIComponent(net.slug), { headers: net.authHeaders() });
+      if (r.status === 404) return; // no remote doc yet; local cache is authoritative
+      if (!r.ok) throw new Error('http-' + r.status);
+      const doc = JSON.parse(new TextDecoder().decode(unzipFirstEntry(new Uint8Array(await r.arrayBuffer()))));
+      if (applyStoreDoc(doc)) saveStore(); // localStorage stays the offline cache; re-mirrors the merged doc
+    } catch (e) { /* offline or unreadable: keep the local cache */ }
+  }
+  function initPlatform() {
+    const token = readLaunchToken();
+    if (!token) { updateAccountLine(); return Promise.resolve(); }
+    const claims = decodeJwtPayload(token) || {};
+    net.hosted = true;
+    net.token = token;
+    net.userId = claims.sub || null;
+    net.slug = claims.game_scope || null; // never hard-coded
+    net.syncState = 'offline';
+    refreshTimer = setTimeout(refreshToken, 45 * 60 * 1000);
+    return Promise.all([loadProfile(), loadCloudSave()])
+      .catch(() => {})
+      .then(updateAccountLine);
+  }
+
+  /* ---- leaderboards ----
+     Hosted: read-only platform board (clients can never submit; personal bests
+     are kept locally and cloud-saved). Local dev: this repo's own server.js
+     validates replays, so submissions and its scoreboard stay available. */
+  async function loadPlatformBoard() {
+    const g = await net.get('/api/v1/games/' + encodeURIComponent(net.slug));
+    const leaderboardId = g && g.leaderboardId;
+    if (!leaderboardId) return null;
+    return net.get('/api/v1/leaderboards/' + encodeURIComponent(leaderboardId) +
+      '/entries?page=1&pageSize=50&friendsOnly=false');
+  }
 
   /* ============================== audio ============================== */
   // authored one-shots (sfx/manifest.json), keyed by event; variants picked at random
@@ -679,7 +929,9 @@
       if (!store.achievements.includes(key)) {
         store.achievements.push(key);
         newAch.push(label);
-        if (net.online) net.post('api/achievements', { profile: profileId, key }).catch(() => {});
+        // its own server's unlock endpoint is local-dev only; hosted keeps
+        // achievements in the cloud-saved store doc
+        if (!net.hosted && net.online) net.post('api/achievements', { profile: profileId, key }).catch(() => {});
       }
     }
     if (won) {
@@ -702,14 +954,27 @@
     if (session.mode === 'learn') {
       if (session.lesson >= 2) { store.progress.tutorialDone = true; award('tutorial_done', 'Tutorial complete'); }
     }
+    if (won && session.ranked) {
+      store.progress.best = store.progress.best || {};
+      const bk = session.mode === 'daily' ? 'daily' : session.mode;
+      if (store.progress.best[bk] == null || sc.total > store.progress.best[bk]) store.progress.best[bk] = sc.total;
+    }
     saveStore();
-    // score submission (ranked modes, server-validated)
+    // score submission (ranked modes). Hosted: clients can never submit to a
+    // platform leaderboard — the personal best above is cloud-saved instead.
+    // Local dev: this repo's server.js re-simulates the replay for validation.
     let submitted = null;
     if (session.ranked && net.online) {
-      const env = R.replayEnvelope(session.cfg, session.state0, session.commands, finalState, sessionId);
-      submitted = net.post('api/scores', { name: 'guest', assists: session.usedAssist ? 1 : 0, replay: env })
-        .then(() => 'Score submitted to the validated board.')
-        .catch(e => 'Score not accepted: ' + e.message);
+      if (net.hosted) {
+        submitted = Promise.resolve('Signed in as ' + displayName() + ' — personal best saved to your profile.');
+      } else {
+        const env = R.replayEnvelope(session.cfg, session.state0, session.commands, finalState, sessionId);
+        submitted = net.post('api/scores', { name: displayName(), assists: session.usedAssist ? 1 : 0, replay: env })
+          .then(() => 'Score submitted to the validated board.')
+          .catch(e => 'Score not accepted: ' + e.message);
+      }
+    } else if (session.ranked) {
+      submitted = Promise.resolve('Offline — score kept in your local records.');
     }
     ui.showResults(sc, won, newAch, submitted);
     setScreen('results');
@@ -880,8 +1145,36 @@
         grid.appendChild(b);
       }
     },
+    showLocalBests(el) {
+      const best = (store.progress && store.progress.best) || {};
+      const rows = [['Journey', best.journey], ['Challenge', best.challenge], ['Daily', best.daily]]
+        .filter(r => r[1] != null);
+      if (!rows.length) { el.textContent = 'No local records yet.'; return; }
+      el.innerHTML = '<table class="scores-table"><tr><th>Board</th><th>Your best</th></tr>' +
+        rows.map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('') + '</table>';
+    },
+    async showPlatformScores(el) {
+      if (!net.online || !net.slug) { ui.showLocalBests(el); return; }
+      el.textContent = 'Loading…';
+      try {
+        const j = await loadPlatformBoard();
+        if (!j) { ui.showLocalBests(el); return; } // no leaderboardId: local records only
+        const list = Array.isArray(j.entries) ? j.entries : (Array.isArray(j) ? j : []);
+        if (!list.length) { el.textContent = 'No entries yet — be the first.'; return; }
+        const names = await Promise.all(list.map(e => profileNickname(e.userId != null ? e.userId : e.user_id)));
+        el.innerHTML = '<table class="scores-table"><tr><th>#</th><th>Player</th><th>Score</th></tr>' +
+          list.map((e, i) => '<tr><td>' + (i + 1) + '</td><td></td><td>' +
+            (e.score != null ? e.score : (e.value != null ? e.value : '')) + '</td></tr>').join('') + '</table>';
+        // insert names safely (no HTML injection)
+        const rows = el.querySelectorAll('tr');
+        names.forEach((n, i) => { if (rows[i + 1]) rows[i + 1].children[1].textContent = n; });
+      } catch (e) {
+        el.textContent = 'Leaderboard unavailable right now. Your local progress is safe.';
+      }
+    },
     async showScores(board) {
       const el = $('scores-content');
+      if (net.hosted) return ui.showPlatformScores(el); // read-only platform board
       if (!net.online) { el.textContent = 'Score boards unavailable offline. Your local progress is safe.'; return; }
       el.textContent = 'Loading…';
       try {
@@ -1209,17 +1502,28 @@
   /* ============================== boot ============================== */
   function boot() {
     initScene();
-    bindUI();
-    bindSettings();
-    ui.buildHelp();
-    applySettings();
-    ui.updateAll();
-    setScreen('title');
+    // token read + hosted state are set synchronously inside initPlatform, so
+    // syncTime() below already carries the Bearer when hosted
+    const platformReady = initPlatform();
     net.syncTime().then(tickDailyCountdown);
     setInterval(tickDailyCountdown, 1000);
-    requestAnimationFrame(loop);
-    funnel('boot');
+    // hosted: resolve identity + remote-preferred cloud save before first paint
+    // of the shell; local: resolves immediately, boot is unchanged
+    platformReady.then(() => {
+      bindUI();
+      bindSettings();
+      ui.buildHelp();
+      applySettings();
+      ui.updateAll();
+      setScreen('title');
+      requestAnimationFrame(loop);
+      funnel('boot');
+    });
   }
+  window.addEventListener('pagehide', () => { flushCloudSave(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushCloudSave();
+  });
   boot();
   // debug/test handle (read-only rules access plus flow control)
   window.__tt = { session, startRound, commitDispatch, undo, doHint, R, store };

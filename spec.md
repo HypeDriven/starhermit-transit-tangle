@@ -189,22 +189,22 @@ No module may mutate rules state except through a validated command. Rendering c
 - Synchronize countdowns and daily boundaries with `GET /api/v1/time` using round-trip-adjusted offset. Treat rate limits and structured `{"error":"..."}` responses as recoverable UI states.
 
 ### Identity, profile, presence, and preferences
-- Support guest practice locally, then offer account sign-in for durable progress. Use the profile display name and avatar only where identity is useful, honor profile privacy, and send throttled presence heartbeats while actively playing.
+- Support guest practice locally, then account sign-in for durable progress when hosted. Display the account nickname from `GET /api/v1/users/{id}/profile` (never the username) where identity is useful and honor profile privacy; the game sends no presence calls.
 - Store accessibility, audio, graphics tier, tutorial completion, camera preference, and rules options through per-game settings. Declare desktop action bindings and read player overrides; touch mappings remain responsive UI controls.
-- Cloud-save progression as a versioned, checksummed document. Resolve conflicts by preserving both snapshots and asking the player when neither is a strict descendant. Never place credentials or private chat in saves.
+- Cloud-save progression through the platform cloud-saves slot: the versioned local document (settings, progress, achievements, personal bests) is mirrored as a single-entry zip+base64 document under `/api/v1/me/cloud-saves/{slug}`; loads prefer the remote copy on conflict, saves are debounced and flushed on pagehide, and localStorage remains the offline cache. Never place credentials or private chat in saves.
 
 ### Discovery, activity, and social layer
-- Start and end launch activity so playtime is accurate. Surface entitlement or catalog state only in host-owned chrome; the game itself must remain playable without promotional interruption.
+- Launch activity and presence are host-owned; the game starts no activity or telemetry calls itself. Surface entitlement or catalog state only in host-owned chrome; the game itself must remain playable without promotional interruption.
 - Provide a compact friends panel for score comparison and invitations where appropriate. Respect presence visibility and do not expose a hidden or private profile through game UI.
 - Do not create gameplay chat or voice surfaces for the initial release; they are not relevant to the core solo loop. Friends-only leaderboard filtering and shareable challenge seeds supply the social layer without unnecessary communication permissions.
 
 ### Achievements and leaderboards
 - Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
-- Provide global and friends-filtered boards for the primary metric plus a fair daily/weekly board. Include ruleset, content version, seed, assists, and duration with every submission; reject impossible or stale-version scores.
-- For globally competitive boards, validate score claims through a lightweight authoritative script using replayable input logs and deterministic seeds. If validation is unavailable, label the board casual and apply plausibility/rate checks.
+- Hosted clients read the platform leaderboard only (clients can never submit scores); personal bests are kept locally and cloud-saved. The dev server's board accepts submissions with ruleset, content version, seed, assists, and duration, and rejects impossible or stale-version scores.
+- For globally competitive boards, validate score claims through replay re-simulation using replayable input logs and deterministic seeds — this repo's `server.js` does so for local dev. If validation is unavailable, label the board casual and apply plausibility/rate checks.
 
 ### Sessions and transport
-- The initial game is solo. Use an authoritative JavaScript Game Script only for seeded daily sessions, replay validation, and durable achievement delivery; ordinary practice can run locally and offline after initial load.
+- The initial game is solo; ordinary practice runs locally and offline after initial load. This repo's `server.js` is a local-dev backend (static hosting, replay validation, dev scoreboard) — not a platform game script, so hosted achievement state lives in the cloud-saved document.
 - A daily session records content version, seed, settings affecting difficulty, an ordered input log, score components, and final checksum. Reconnect from the durable session snapshot rather than trusting cached client state.
 - Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
 
@@ -251,7 +251,7 @@ Success targets for the first public test: median first-play time under 20 secon
 ### Platform and network
 
 - Test expired/rotated tokens, privacy settings, rate limits, offline start, reconnect at each game state, duplicate commands, out-of-order events, server restart, and version mismatch.
-- Verify achievement idempotency, leaderboard validation, friends-only filtering, cloud-save conflict handling, activity start/end pairing, and server-time countdown accuracy.
+- Verify achievement idempotency, leaderboard validation, cloud-save conflict handling, token refresh, and server-time countdown accuracy.
 - For hosted sessions, test disconnect/rejoin, abandonment, timeout, invitation expiry, result reconciliation, replay access, moderation controls, and authoritative cheat attempts.
 
 ## 10. Definition of done and non-goals
