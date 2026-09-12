@@ -120,22 +120,10 @@ function overlayGone(page, id) {
   return page.waitForFunction((i) => { const e = document.getElementById(i); return !!e && e.hidden; }, id, { timeout: 8000 });
 }
 
-// Project a world point to client coords by replicating the game's own camera
-// (fov 42, camHome (0,15*dist,17*dist), lookAt(0,0,0.5), aspect = canvas box).
 async function projectWorld(page, x, y, z) {
-  return page.evaluate(([x, y, z]) => {
-    const canvas = document.getElementById('c');
-    const rect = canvas.getBoundingClientRect();
-    const w = window.innerWidth, h = window.innerHeight;
-    const dist = w < h ? 1 + (h / w - 1) * 0.55 : 1;
-    const cam = new window.THREE.PerspectiveCamera(42, rect.width / rect.height, 0.1, 200);
-    cam.position.set(0, 15 * dist, 17 * dist);
-    cam.lookAt(0, 0, 0.5);
-    cam.updateProjectionMatrix(); cam.updateMatrixWorld();
-    const p = new window.THREE.Vector3(x, y, z);
-    const q = p.clone().project(cam);
-    return { x: rect.left + (q.x + 1) / 2 * rect.width, y: rect.top + (1 - q.y) / 2 * rect.height };
-  }, [x, y, z]);
+  // the game fits its camera to the viewport and HUD; ask it where a world
+  // point lands instead of reconstructing a fixed camera here
+  return page.evaluate(([x, y, z]) => window.__tt.projectWorld(x, y, z), [x, y, z]);
 }
 
 async function queueScreenPos(page, qi) {

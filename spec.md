@@ -39,7 +39,7 @@ Win when all passengers leave; lose when every holding position is blocked. Resu
 
 ### Modes
 
-- **Learn:** interactive lessons introduce one rule at a time and require the player to perform the action.
+- **Learn:** interactive lessons introduce one rule at a time and require the player to perform the action. The lesson coach sits above the measured action tray (docked as a right-hand column in short landscape) and can be hidden to a chip; the camera frames the whole board inside the area not covered by HUD, tray or coach. The daily countdown only uses a finite server time (falls back to the local clock).
 - **Journey:** authored progression with gradually combined mechanics and periodic mastery stages.
 - **Daily:** one shared seed and ruleset per UTC day, synchronized to platform time.
 - **Practice:** selectable difficulty, restart, undo where rules permit, and no effect on competitive rating.

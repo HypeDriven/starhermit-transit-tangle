@@ -115,10 +115,14 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-vis
 /* ---------- tutorial / toast ---------- */
 #coach {
   position: fixed; left: 50%; transform: translateX(-50%);
-  bottom: calc(86px + var(--sab)); z-index: 15;
+  bottom: calc(var(--tray-h, 76px) + 10px + var(--sab)); z-index: 15;
   background: var(--panel); border: 2px solid var(--accent); border-radius: 12px;
-  padding: 10px 16px; max-width: min(520px, 92vw); box-shadow: 0 6px 24px rgba(20,35,55,.25);
+  padding: 10px 16px; width: max-content; max-width: min(520px, 92vw); box-shadow: 0 6px 24px rgba(20,35,55,.25);
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
 }
+#coach .coach-text { flex: 1 1 200px; }
+#coach.collapsed .coach-text { display: none; }
+#coach.collapsed { padding: 6px 10px; }
 #coach[hidden] { display: none; }
 #toast {
   position: fixed; top: calc(54px + var(--sat)); left: 50%; transform: translateX(-50%);
@@ -162,5 +166,8 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-vis
   #hud { font-size: .85em; padding-top: calc(4px + var(--sat)); }
   #tray { padding-top: 6px; padding-bottom: calc(6px + var(--sab)); }
   .btn { padding: 10px 16px; }
+  /* coach docks as a right-hand column; the board is framed beside it */
+  #coach { left: auto; right: calc(8px + var(--sar)); transform: none; top: calc(var(--hud-h, 48px) + 8px + var(--sat)); bottom: auto;
+    max-width: min(240px, 34vw); max-height: calc(100vh - var(--hud-h, 48px) - var(--tray-h, 60px) - 24px); overflow-y: auto; font-size: .9em; padding: 8px 10px; }
 }
 body.reduced-motion * { transition: none !important; animation: none !important; }

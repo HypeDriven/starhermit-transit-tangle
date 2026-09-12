@@ -168,7 +168,9 @@
         const t0 = Date.now();
         const r = await fetch('/api/v1/time', { headers: net.authHeaders() });
         const j = await r.json();
-        net.offset = j.now - (t0 + Date.now()) / 2;
+        const serverMs = Number(j.serverTime != null ? j.serverTime : j.now);
+        if (!Number.isFinite(serverMs)) throw new Error('bad time payload');
+        net.offset = serverMs - (t0 + Date.now()) / 2;
         net.online = true;
       } catch (e) { net.online = false; }
     },
@@ -580,7 +582,7 @@
     return out;
   }
 
-  function rebuildAll() { buildEnvironment(session.theme || 'plaza'); rebuildBoard(); }
+  function rebuildAll() { buildEnvironment(session.theme || 'plaza'); rebuildBoard(); resize(); }
 
   function buildEnvironment(themeName) {
     if (!scene3.ready) return;
@@ -993,9 +995,22 @@
   function coachForLesson(lesson, step) {
     coachStep = step;
     const el = $('coach');
-    el.textContent = 'Lesson ' + (lesson + 1) + ': ' + LESSONS[lesson][Math.min(step, 1)];
+    const text = 'Lesson ' + (lesson + 1) + ': ' + LESSONS[lesson][Math.min(step, 1)];
+    el.textContent = '';
+    const span = document.createElement('span'); span.className = 'coach-text'; span.textContent = text;
+    // the coach can be tucked away so it never hides a vehicle; the chip
+    // brings the text back
+    const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'btn small secondary coach-toggle';
+    btn.textContent = 'Hide'; btn.setAttribute('aria-expanded', 'true');
+    btn.addEventListener('click', () => {
+      const c = el.classList.toggle('collapsed');
+      btn.textContent = c ? 'Show lesson' : 'Hide';
+      btn.setAttribute('aria-expanded', String(!c));
+    });
+    el.append(span, btn);
+    el.classList.remove('collapsed');
     el.hidden = false;
-    announce(el.textContent);
+    announce(text);
   }
   function coachAdvance(ev, state) {
     if (coachStep === 0 && ev.boarded.length > 0) coachForLesson(session.lesson, 1);
@@ -1483,18 +1498,76 @@
     if (scene3.ready) renderer.render(scene, camera);
   }
 
+  // Bands of the viewport covered by fixed chrome (HUD, tray, coach); the
+  // board is framed inside what is left via a camera view offset.
+  function safeInsets(w, h) {
+    const ins = { top: 0, bottom: 0, left: 0, right: 0 };
+    const hud = $('hud'), tray = $('tray'), coach = $('coach');
+    if (hud && !hud.hidden) ins.top = Math.max(ins.top, hud.getBoundingClientRect().bottom);
+    if (tray && !tray.hidden) ins.bottom = Math.max(ins.bottom, h - tray.getBoundingClientRect().top);
+    if (coach && !coach.hidden) {
+      const r = coach.getBoundingClientRect();
+      if (r.width && r.height) {
+        if (r.width < w * 0.45 && r.height > 80) { // docked as a side column (landscape)
+          if (r.left + r.width / 2 < w / 2) ins.left = Math.max(ins.left, r.right); else ins.right = Math.max(ins.right, w - r.left);
+        } else ins.bottom = Math.max(ins.bottom, h - r.top);
+      }
+    }
+    return ins;
+  }
+
+  // Pull the authored camera straight back along its own axis until the whole
+  // board (queues, holding lane, vehicles) fits the framed rectangle.
+  function fitCamera() {
+    const w = window.innerWidth, h = window.innerHeight;
+    const ins = safeInsets(w, h);
+    const sw = Math.max(1, w - ins.left - ins.right), sh = Math.max(1, h - ins.top - ins.bottom);
+    if (sw < w * 0.45 || sh < h * 0.35) { camera.aspect = w / h; camera.clearViewOffset(); }
+    else { camera.aspect = sw / sh; camera.setViewOffset(sw, sh, -ins.left, -ins.top, w, h); }
+    camera.updateProjectionMatrix();
+    const look = new THREE.Vector3(0, 0, 0.5);
+    const base = new THREE.Vector3(0, 15, 17);
+    const dir = base.clone().sub(look).normalize();
+    const box = boardGroup ? new THREE.Box3().setFromObject(boardGroup) : new THREE.Box3(new THREE.Vector3(-7, 0, -7), new THREE.Vector3(7, 2, 7));
+    box.expandByScalar(0.8);
+    const pts = [];
+    for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) pts.push(new THREE.Vector3(x, y, z));
+    const probe = new THREE.PerspectiveCamera(camera.fov, camera.aspect, 0.1, 200);
+    const v = new THREE.Vector3();
+    let d = base.distanceTo(look) * 0.7;
+    for (let i = 0; i < 14; i++) {
+      probe.position.copy(look).addScaledVector(dir, d);
+      probe.lookAt(look); probe.updateMatrixWorld(); probe.updateProjectionMatrix();
+      let over = 0;
+      for (const q of pts) { v.copy(q).project(probe); over = Math.max(over, Math.abs(v.x) / 0.94, Math.abs(v.y) / 0.92); }
+      if (over <= 1) break;
+      d *= Math.min(1.6, over + 0.02);
+    }
+    scene3.camHome.copy(look).addScaledVector(dir, d);
+    camera.position.copy(scene3.camHome);
+    camera.lookAt(look);
+  }
+
   function resize() {
+    // measured chrome heights drive the coach placement in CSS
+    const hud = $('hud'), tray = $('tray');
+    document.documentElement.style.setProperty('--hud-h', (hud && !hud.hidden ? hud.offsetHeight : 0) + 'px');
+    document.documentElement.style.setProperty('--tray-h', (tray && !tray.hidden ? tray.offsetHeight : 0) + 'px');
     if (!scene3.ready) return;
     const w = window.innerWidth, h = window.innerHeight;
     renderer.setSize(w, h);
-    camera.aspect = w / h;
-    // portrait: pull back to keep queues in frame
-    const dist = w < h ? 1 + (h / w - 1) * 0.55 : 1;
-    scene3.camHome.set(0, 15 * dist, 17 * dist);
-    if (!store.settings.reducedMotion) { /* keep current camera; reset applies */ }
-    camera.position.copy(scene3.camHome);
-    camera.lookAt(0, 0, 0.5);
-    camera.updateProjectionMatrix();
+    fitCamera();
+  }
+  {
+    // chrome changes (coach shown/hidden, tray wrapping) refit the board
+    let raf = 0;
+    const refit = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(resize); };
+    if (typeof ResizeObserver === 'function') {
+      const ro = new ResizeObserver(refit);
+      ['hud', 'tray', 'coach'].forEach(id => { const el = $(id); if (el) ro.observe(el); });
+    }
+    const mo = new MutationObserver(refit);
+    ['hud', 'tray', 'coach'].forEach(id => { const el = $(id); if (el) mo.observe(el, { attributes: true, attributeFilter: ['hidden', 'class'] }); });
   }
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 60));
@@ -1526,5 +1599,14 @@
   });
   boot();
   // debug/test handle (read-only rules access plus flow control)
-  window.__tt = { session, startRound, commitDispatch, undo, doHint, R, store };
+  window.__tt = {
+    session, startRound, commitDispatch, undo, doHint, R, store,
+    // client-space projection under the live (fitted) camera, for tests/tools
+    projectWorld(x, y, z) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      camera.updateMatrixWorld();
+      const q = new THREE.Vector3(x, y, z).project(camera);
+      return { x: rect.left + (q.x + 1) / 2 * rect.width, y: rect.top + (1 - q.y) / 2 * rect.height };
+    },
+  };
 })();
