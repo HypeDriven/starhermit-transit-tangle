@@ -14,7 +14,8 @@
     settings: {
       music: 50, fx: 80, ambience: 40, palette: 'default', quality: 'auto',
       reducedMotion: false, highContrast: false, largeText: false,
-      leftHand: false, captions: true, haptics: true, analytics: false
+      leftHand: false, captions: true, haptics: true, analytics: false,
+      gfx: {} // graphics overrides (render_scale, adaptive, show_fps, per-category tiers); preset lives in `quality`
     },
     progress: { journeyDone: [], journeyUnlocked: 0, tutorialDone: false, daysPlayed: [], wins: 0, streak: 0, best: {} },
     achievements: []
@@ -24,6 +25,12 @@
   catch (e) { store = JSON.parse(JSON.stringify(defaults)); }
   store.settings = Object.assign({}, defaults.settings, store.settings);
   store.progress = Object.assign({}, defaults.progress, store.progress);
+  function migrateSettings(st) {
+    if (st.quality === 'medium') st.quality = 'balanced'; // pre-preset tier name
+    if (!['auto', 'low', 'balanced', 'high', 'ultra'].includes(st.quality)) st.quality = 'auto';
+    if (!st.gfx || typeof st.gfx !== 'object') st.gfx = {};
+  }
+  migrateSettings(store.settings);
   function saveStore() { try { localStorage.setItem(LS_KEY, JSON.stringify(store)); } catch (e) {} queueCloudSave(); }
   const sessionId = 's-' + Math.random().toString(36).slice(2, 10);
   const profileId = (() => {
@@ -255,6 +262,7 @@
     if (!doc || typeof doc !== 'object') return false;
     // conflict resolution prefers the remote copy field-by-field
     store.settings = Object.assign({}, defaults.settings, store.settings, doc.settings);
+    migrateSettings(store.settings);
     store.progress = Object.assign({}, defaults.progress, store.progress, doc.progress);
     if (Array.isArray(doc.achievements)) store.achievements = doc.achievements.slice();
     return true;
@@ -488,35 +496,159 @@
   const pickMeshes = { vehicles: [], queues: [] };
   const markerMeshes = [];
   let particles = null;
-  let quality = { dpr: 2, shadows: true, particleCount: 60 };
+  let quality = { particleCount: 6 };
+
+  /* ---- graphics quality (model in gfx.js, helpers in gfx-render.js via window.TTGfx) ---- */
+  const GFX = window.TTGfx;
+  const GS = GFX.gfxStrings(navigator.language);
+  const gfx = {
+    gpu: '', detected: 'balanced', q: null, composer: null, postKey: null, postFailed: false,
+    adaptiveScale: 1, frames: [], fps: 0, size: [0, 0], ratio: 1, envTex: null, time: 0,
+    paving: {}, spark: null
+  };
+  const isTouch = (() => {
+    try { return matchMedia('(pointer: coarse)').matches || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent); } catch (e) { return false; }
+  })();
+  function savedGfx() { return Object.assign({}, store.settings.gfx, { preset: store.settings.quality }); }
+  function gpuName(r) {
+    try {
+      const gl = r.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      return String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+    } catch (e) { return ''; }
+  }
+  function motionAllowed() {
+    if (store.settings.reducedMotion) return false;
+    try { return !matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return true; }
+  }
+  // HDR multiplier for emissive accents: above the bloom threshold only when bloom is on.
+  function glow(k) { return gfx.q && gfx.q.bloom === 'on' ? k : 1; }
+  function detailed() { return !!gfx.q && gfx.q.detail === 'detailed' && !!GFX.RoundedBoxGeometry; }
 
   function computeQuality() {
-    const q = store.settings.quality;
-    const tier = q === 'auto'
-      ? (Math.min(window.innerWidth, window.innerHeight) < 700 ? 'low' : 'high')
-      : q;
-    if (tier === 'low') quality = { dpr: 1, shadows: false, particleCount: 20 };
-    else if (tier === 'medium') quality = { dpr: 1.5, shadows: false, particleCount: 40 };
-    else quality = { dpr: 2, shadows: true, particleCount: 60 };
-    if (renderer) {
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.dpr));
-      renderer.shadowMap.enabled = quality.shadows;
+    const q = GFX.resolve(savedGfx(), gfx.detected);
+    gfx.q = q;
+    quality.particleCount = GFX.PARTICLES[q.particles];
+    document.body.dataset.gfxPreset = q.preset;
+    canvas.dataset.gfxPreset = q.preset;
+    fpsVisible(q.showFps);
+    if (!renderer || !scene) return;
+    const size = GFX.SHADOW_MAP[q.shadows];
+    renderer.shadowMap.enabled = size > 0;
+    sunLight.castShadow = size > 0;
+    if (size > 0 && sunLight.shadow.mapSize.x !== size) {
+      sunLight.shadow.mapSize.set(size, size);
+      if (sunLight.shadow.map) { sunLight.shadow.map.dispose(); sunLight.shadow.map = null; }
     }
+    const env = q.reflections === 'on' && !!GFX.roomEnvironment;
+    if (env && !gfx.envTex) {
+      try { gfx.envTex = GFX.roomEnvironment(renderer); } catch (e) { gfx.envTex = null; }
+    }
+    scene.environment = env ? gfx.envTex : null;
+    scene.environmentIntensity = 0.32;
+    // With image-based fill the hemisphere light is reduced so totals stay close to the plain look.
+    ambLight.intensity = scene.environment ? 0.7 : 1.1;
+    sunLight.intensity = scene.environment ? 2.15 : 2.4;
+    gfx.adaptiveScale = 1;
+    gfx.frames = [];
+    gfx.postKey = null; // rebuild the post chain on the next frame
+    for (const m of Object.values(MAT)) m.needsUpdate = true;
+    if (particles) {
+      particles.material.size = q.particles === 'high' ? 0.26 : 0.18;
+      particles.material.needsUpdate = true;
+    }
+  }
+
+  function fpsVisible(on) {
+    let el = $('fps-meter');
+    if (on && !el) {
+      el = document.createElement('div');
+      el.id = 'fps-meter';
+      el.setAttribute('aria-hidden', 'true');
+      el.textContent = '… fps';
+      document.body.append(el);
+    }
+    if (el) el.hidden = !on;
+  }
+
+  function buildPost(w, h, ratio) {
+    if (gfx.composer) { gfx.composer.dispose(); gfx.composer = null; }
+    const q = gfx.q;
+    if (!q.post) return;
+    if (!GFX.buildComposer) { gfx.postFailed = true; return; }
+    try {
+      gfx.composer = GFX.buildComposer(renderer, scene, camera, w, h, ratio, q);
+      gfx.postFailed = false;
+    } catch (e) {
+      // Post-processing is an enhancement: render directly and say so in the Graphics panel.
+      gfx.composer = null;
+      gfx.postFailed = true;
+    }
+    syncGfxSummary();
+  }
+
+  // Adaptive resolution: step the render scale down when frames are slow, back up when fast.
+  function adapt(ms) {
+    const f = gfx.frames;
+    f.push(ms);
+    if (f.length < 90) return false;
+    const avg = f.reduce((a, b) => a + b, 0) / f.length;
+    f.length = 0;
+    gfx.fps = 1000 / avg;
+    const el = $('fps-meter');
+    if (el && !el.hidden) el.textContent = Math.round(gfx.fps) + ' fps · ' + (Math.round(gfx.ratio * 100) / 100) + '×';
+    if (session.screen === 'settings') syncGfxSummary();
+    if (!gfx.q.adaptive) return false;
+    const before = gfx.adaptiveScale;
+    if (avg > 26) gfx.adaptiveScale = Math.max(0.6, gfx.adaptiveScale - 0.1);
+    else if (avg < 14 && gfx.adaptiveScale < 1) gfx.adaptiveScale = Math.min(1, gfx.adaptiveScale + 0.05);
+    return before !== gfx.adaptiveScale;
+  }
+
+  function renderFrame(dt) {
+    const q = gfx.q;
+    adapt(dt * 1000);
+    const w = window.innerWidth, h = window.innerHeight;
+    const ratio = Math.min(window.devicePixelRatio || 1, q.dpr) * q.scale * gfx.adaptiveScale;
+    if (w !== gfx.size[0] || h !== gfx.size[1] || ratio !== gfx.ratio) {
+      gfx.size = [w, h];
+      gfx.ratio = ratio;
+      renderer.setPixelRatio(ratio);
+      renderer.setSize(w, h, false);
+    }
+    const key = q.post ? [q.ao, q.bloom, q.grade, q.antialias, w, h, ratio].join('|') : 'none';
+    if (key !== gfx.postKey) { gfx.postKey = key; buildPost(w, h, ratio); }
+    if (gfx.composer) {
+      try { gfx.composer.render(dt); return; } catch (e) { gfx.composer.dispose(); gfx.composer = null; gfx.postFailed = true; syncGfxSummary(); }
+    }
+    renderer.render(scene, camera);
+  }
+
+  function graphicsInfo() {
+    const px = [Math.round(gfx.size[0] * gfx.ratio), Math.round(gfx.size[1] * gfx.ratio)];
+    return {
+      gpu: gfx.gpu || GS.unknownGpu, detected: gfx.detected, resolved: gfx.q,
+      summary: GFX.describe(gfx.q, px, GS.sum), fps: Math.round(gfx.fps || 0),
+      adaptiveScale: Math.round(gfx.adaptiveScale * 100) / 100,
+      postFailed: !!(gfx.postFailed || (gfx.q.post && !GFX.buildComposer)), post: !!gfx.composer
+    };
   }
 
   function initScene() {
     try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     } catch (e) {
       $('objective-text').textContent = '3D unavailable: ' + e.message + '. The text board remains fully playable.';
+      computeQuality();
       return;
     }
+    gfx.gpu = gpuName(renderer);
+    gfx.detected = GFX.detectPreset(gfx.gpu, isTouch);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 1.0;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    computeQuality();
 
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
@@ -524,31 +656,56 @@
     camera.position.copy(scene3.camHome);
     camera.lookAt(0, 0, 0.5);
 
-    sunLight = new THREE.DirectionalLight(0xffffff, 2.4);
+    // warm key light with a shadow box fitted to the board (see fitShadow)
+    sunLight = new THREE.DirectionalLight(0xfff4e6, 2.4);
     sunLight.position.set(-8, 18, 10);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.set(1024, 1024);
+    sunLight.shadow.bias = -0.0004;
+    sunLight.shadow.normalBias = 0.02;
     sunLight.shadow.camera.left = -16; sunLight.shadow.camera.right = 16;
     sunLight.shadow.camera.top = 16; sunLight.shadow.camera.bottom = -16;
-    scene.add(sunLight);
-    ambLight = new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.1);
+    scene.add(sunLight, sunLight.target);
+    // cool sky / warm ground fill
+    ambLight = new THREE.HemisphereLight(0xf4f8ff, 0x8899aa, 1.1);
     scene.add(ambLight);
 
     // particle pool (bounded, cosmetic only, never raycast)
     const pg = new THREE.BufferGeometry();
     const pos = new Float32Array(200 * 3);
+    const col = new Float32Array(200 * 3).fill(1);
     pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    particles = new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xffffff, size: 0.15, transparent: true, opacity: 0.9 }));
+    pg.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    if (GFX.sparkTexture) gfx.spark = GFX.sparkTexture();
+    particles = new THREE.Points(pg, new THREE.PointsMaterial({
+      color: 0xffffff, size: 0.2, map: gfx.spark, vertexColors: true, transparent: true, opacity: 0.95,
+      depthWrite: false, alphaTest: gfx.spark ? 0.02 : 0
+    }));
     particles.frustumCulled = false;
     particles.userData.live = [];
     scene.add(particles);
 
     canvas.addEventListener('webglcontextlost', ev => { ev.preventDefault(); scene3.ready = false; });
-    canvas.addEventListener('webglcontextrestored', () => { initSceneFlag = true; rebuildAll(); });
+    canvas.addEventListener('webglcontextrestored', () => { initSceneFlag = true; gfx.envTex = null; gfx.postKey = null; scene3.ready = true; computeQuality(); rebuildAll(); });
+    computeQuality();
     scene3.ready = true;
     resize();
   }
   let initSceneFlag = false;
+
+  // Fit the key light's orthographic shadow box tightly around the board.
+  function fitShadow(g) {
+    if (!sunLight) return;
+    const box = new THREE.Box3().setFromObject(g);
+    if (box.isEmpty()) return;
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const dir = new THREE.Vector3(-8, 18, 10).normalize();
+    sunLight.target.position.copy(sphere.center);
+    sunLight.position.copy(sphere.center).addScaledVector(dir, 30);
+    const r = sphere.radius + 0.6;
+    Object.assign(sunLight.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 30 - r - 2, far: 30 + r + 2 });
+    sunLight.shadow.camera.updateProjectionMatrix();
+  }
 
   // shared geometry/material caches
   const GEO = {}, MAT = {};
@@ -565,14 +722,45 @@
     }
     return GEO['p' + c];
   }
+  function sharedGeo(key, make) { return GEO[key] || (GEO[key] = make()); }
+  function roundedBox(key, w, h, d, r) {
+    return sharedGeo(key, () => (detailed() ? new GFX.RoundedBoxGeometry(w, h, d, 3, r) : new THREE.BoxGeometry(w, h, d)));
+  }
   function colorMat(c) {
-    const key = 'c' + c + '-' + store.settings.palette;
-    if (!MAT[key]) MAT[key] = new THREE.MeshStandardMaterial({ color: colorOf(c), roughness: 0.55, metalness: 0.05 });
+    const det = detailed();
+    const key = 'c' + c + '-' + store.settings.palette + (det ? '-d' : '');
+    if (!MAT[key]) {
+      // detailed: glossy lacquered toy finish (clearcoat picks up the studio reflections)
+      MAT[key] = det
+        ? new THREE.MeshPhysicalMaterial({ color: colorOf(c), roughness: 0.42, metalness: 0, clearcoat: 0.45, clearcoatRoughness: 0.25 })
+        : new THREE.MeshStandardMaterial({ color: colorOf(c), roughness: 0.55, metalness: 0.05 });
+    }
     return MAT[key];
   }
   function plainMat(color, opts) {
     const key = 'm' + color + JSON.stringify(opts || '');
     if (!MAT[key]) MAT[key] = new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.8, metalness: 0.02 }, opts));
+    return MAT[key];
+  }
+  function physMat(key, opts) {
+    if (!MAT[key]) MAT[key] = new THREE.MeshPhysicalMaterial(opts);
+    return MAT[key];
+  }
+  // Emissive-looking accents (markers, lamps): unlit, pushed into HDR when bloom is on.
+  function glowMat(color, k, opts) {
+    const mat = new THREE.MeshBasicMaterial(Object.assign({ color }, opts));
+    mat.color.multiplyScalar(glow(k));
+    return mat;
+  }
+  function groundMat(t, themeName) {
+    if (!detailed() || !GFX.pavingTexture) return plainMat(t.ground);
+    const key = 'ground-' + themeName;
+    if (!MAT[key]) {
+      if (!gfx.paving[themeName]) gfx.paving[themeName] = GFX.pavingTexture(t.ground, themeName.length * 977);
+      const tex = gfx.paving[themeName];
+      tex.repeat.set(5, 5);
+      MAT[key] = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0 });
+    }
     return MAT[key];
   }
 
@@ -582,7 +770,11 @@
     return out;
   }
 
-  function rebuildAll() { buildEnvironment(session.theme || 'plaza'); rebuildBoard(); resize(); }
+  function rebuildAll() {
+    // detail tier swaps geometry: drop cached shapes that depend on it
+    for (const k of Object.keys(GEO)) if (k.startsWith('rb-')) { GEO[k].dispose(); delete GEO[k]; }
+    buildEnvironment(session.theme || 'plaza'); rebuildBoard(); resize();
+  }
 
   function buildEnvironment(themeName) {
     if (!scene3.ready) return;
@@ -590,7 +782,7 @@
     const t = THEMES[themeName] || THEMES.plaza;
     scene.background = new THREE.Color(t.sky);
     const env = new THREE.Group();
-    const ground = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 0.5, 48), plainMat(t.ground));
+    const ground = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 0.5, detailed() ? 96 : 48), groundMat(t, themeName));
     ground.position.y = -0.25;
     ground.receiveShadow = true;
     env.add(ground);
@@ -615,16 +807,40 @@
     pots.castShadow = bushes.castShadow = true;
     env.add(pots, bushes);
     // holding lane pad
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(10, 0.1, 1.6), plainMat(0xe8d9b0));
+    const pad = new THREE.Mesh(roundedBox('rb-pad', 10, 0.1, 1.6, 0.04), plainMat(0xe8d9b0, detailed() ? { roughness: 0.7 } : undefined));
     pad.position.set(0, 0.05, 2.6);
     pad.receiveShadow = true;
     env.add(pad);
+    if (detailed()) {
+      // low bollard lights just inside the plaza ring; warm caps glow under bloom
+      const n = 12, poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.11, 0.5, 10), plainMat(0x3a4250, { roughness: 0.45, metalness: 0.5 }), n);
+      const bulbMat = glowMat(themeName === 'night' ? 0xffd79a : 0xfff0d0, themeName === 'night' ? 4 : 2.6);
+      const bulbs = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 12), bulbMat, n);
+      for (let i = 0; i < n; i++) {
+        const a = (i + 0.5) / n * Math.PI * 2, rad = 12.7;
+        m4.makeTranslation(Math.cos(a) * rad, 0.25, Math.sin(a) * rad); poles.setMatrixAt(i, m4);
+        m4.makeTranslation(Math.cos(a) * rad, 0.55, Math.sin(a) * rad); bulbs.setMatrixAt(i, m4);
+      }
+      poles.castShadow = true;
+      env.add(poles, bulbs);
+      env.userData.bulbs = bulbMat;
+      env.userData.bulbBase = bulbMat.color.clone();
+      // painted boarding line along the holding lane
+      const line = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.012, 0.06), plainMat(0xf2c14e, { roughness: 0.6 }));
+      line.position.set(0, 0.106, 2.0);
+      env.add(line);
+    }
     scene.add(env);
     scene3.env = env;
   }
 
   function disposeGroup(g) {
-    g.traverse(o => { if (o.geometry && !Object.values(GEO).includes(o.geometry)) o.geometry.dispose(); });
+    const shared = Object.values(GEO);
+    g.traverse(o => {
+      if (o.geometry && !shared.includes(o.geometry)) o.geometry.dispose();
+      // per-build unlit accent materials are not cached
+      if (o.material && o.material.isMeshBasicMaterial && !Object.values(MAT).includes(o.material)) o.material.dispose();
+    });
   }
 
   // Rebuild board meshes from an immutable snapshot (plus simple tween-in).
@@ -633,24 +849,35 @@
     if (boardGroup) { scene.remove(boardGroup); disposeGroup(boardGroup); }
     const s = session.state;
     const g = new THREE.Group();
+    const det = detailed();
+    const bob = [];
     pickMeshes.vehicles = []; pickMeshes.queues = [];
     markerMeshes.length = 0;
 
     // queues: platforms + passenger pawns (front nearest camera)
     const qPos = layoutPositions(s.q.length, 2.6, -1.6);
     s.q.forEach((lane, qi) => {
-      const plat = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.18, 6.2), plainMat(0xdde5ec));
+      const plat = new THREE.Mesh(roundedBox('rb-plat', 2.0, 0.18, 6.2, 0.06), plainMat(0xdde5ec, det ? { roughness: 0.6 } : undefined));
       plat.position.set(qPos[qi].x, 0.09, -1.6 - 2.0);
       plat.receiveShadow = true;
       plat.userData.queueIndex = qi;
       g.add(plat);
       pickMeshes.queues.push(plat);
+      if (det) {
+        // safety stripe at the boarding edge
+        const stripe = new THREE.Mesh(sharedGeo('stripe', () => new THREE.BoxGeometry(1.8, 0.012, 0.14)), plainMat(0xf2c14e, { roughness: 0.6 }));
+        stripe.position.set(qPos[qi].x, 0.186, -0.72);
+        stripe.userData.queueIndex = qi;
+        g.add(stripe);
+      }
       lane.forEach((c, idx) => {
         const m = new THREE.Mesh(pawnGeo(c), colorMat(c));
         m.position.set(qPos[qi].x, 0.55, -0.9 - idx * 0.95);
         m.castShadow = true;
+        m.receiveShadow = det;
         m.userData.queueIndex = qi;
         g.add(m);
+        bob.push({ o: m, y: 0.55, ph: qi * 1.7 + idx * 0.9, amp: 0.035 });
         if (prevEvents && prevEvents.displaced.some(d => d.queue === qi) && idx === 0) {
           tweenScaleIn(m);
         }
@@ -663,11 +890,12 @@
       m.position.set(-4.5 + i * 1.0, 0.55, 2.6);
       m.castShadow = true;
       g.add(m);
+      bob.push({ o: m, y: 0.55, ph: 5 + i * 1.3, amp: 0.025 });
       if (prevEvents && prevEvents.displaced.length && i === s.h.length - 1) tweenFrom(m, qPos[prevEvents.displaced[0].queue].x, -0.9);
     });
     // holding capacity ticks
     for (let i = 0; i < s.holdingCap; i++) {
-      const tickm = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 16),
+      const tickm = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, det ? 24 : 16),
         plainMat(i < s.h.length ? 0xd64545 : 0xcccccc));
       tickm.position.set(-4.5 + i * 1.0, 0.12, 2.6);
       g.add(tickm);
@@ -677,15 +905,36 @@
     const vPos = layoutPositions(s.v.length, 2.8, 5.4);
     s.v.forEach((veh, vi) => {
       const grp = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.7, 1.0), colorMat(veh.c));
+      const body = new THREE.Mesh(roundedBox('rb-body', 1.6, 0.7, 1.0, 0.12), colorMat(veh.c));
       body.position.y = 0.45;
       body.castShadow = true;
-      const cab = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.9), plainMat(0xffffff));
+      const cab = new THREE.Mesh(roundedBox('rb-cab', 0.7, 0.5, 0.9, 0.08),
+        det ? physMat('cab', { color: 0xffffff, roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.2 }) : plainMat(0xffffff));
       cab.position.set(-0.3, 1.0, 0);
+      cab.castShadow = det;
       grp.add(body, cab);
+      if (det) {
+        // window band, wheels and headlamps
+        const glass = new THREE.Mesh(sharedGeo('glass', () => new THREE.BoxGeometry(0.74, 0.2, 0.94)),
+          physMat('glass', { color: 0x1c2a3a, roughness: 0.08, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.05 }));
+        glass.position.set(-0.3, 1.08, 0);
+        grp.add(glass);
+        const wheelGeo = sharedGeo('wheel', () => new THREE.CylinderGeometry(0.17, 0.17, 0.12, 18).rotateX(Math.PI / 2));
+        for (const [wx, wz] of [[-0.5, 0.5], [0.5, 0.5], [-0.5, -0.5], [0.5, -0.5]]) {
+          const wheel = new THREE.Mesh(wheelGeo, plainMat(0x262a31, { roughness: 0.75 }));
+          wheel.position.set(wx, 0.17, wz);
+          grp.add(wheel);
+        }
+        const lampMat = glowMat(0xfff3c4, 3);
+        for (const lz of [-0.3, 0.3]) {
+          const lamp = new THREE.Mesh(sharedGeo('lamp', () => new THREE.BoxGeometry(0.03, 0.1, 0.16)), lampMat);
+          lamp.position.set(-0.815, 0.55, lz);
+          grp.add(lamp);
+        }
+      }
       // remaining-count pips
       for (let k = 0; k < veh.n; k++) {
-        const pip = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), colorMat(veh.c));
+        const pip = new THREE.Mesh(sharedGeo('pip', () => new THREE.SphereGeometry(0.12, 12, 8)), colorMat(veh.c));
         pip.position.set(-0.5 + k * 0.32, 1.45, 0);
         grp.add(pip);
       }
@@ -697,7 +946,10 @@
       if (veh.n < 1) grp.children.forEach(ch => { ch.material = plainMat(0x9aa7b2); });
       g.add(grp);
       pickMeshes.vehicles.push(grp);
-      if (session.selectedVehicle === vi) addSelectionRing(g, vPos[vi].x, vPos[vi].z);
+      if (session.selectedVehicle === vi) {
+        const ring = addSelectionRing(g, vPos[vi].x, vPos[vi].z);
+        bob.push({ o: grp, y: 0, ph: 0, amp: 0.06, lift: 0.08, ring });
+      }
     });
 
     // legal-target markers when a vehicle is selected
@@ -707,7 +959,7 @@
         const p = R.preview(s, session.selectedVehicle, qi);
         if (!p.ok) return;
         const mk = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.5, 24),
-          new THREE.MeshBasicMaterial({ color: p.match ? 0x2f9e63 : 0xc77d0a, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
+          glowMat(p.match ? 0x2f9e63 : 0xc77d0a, 1.8, { side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
         mk.rotation.x = -Math.PI / 2;
         mk.position.set(qPos[qi].x, 0.22, -0.9);
         g.add(mk);
@@ -715,18 +967,46 @@
       });
     }
 
+    g.userData.bob = bob;
     scene.add(g);
     boardGroup = g;
-    if (prevEvents && prevEvents.boarded.length) burst(vPosEvent(prevEvents), s);
+    fitShadow(g);
+    if (prevEvents && prevEvents.boarded.length) {
+      const at = prevEvents.queue != null && qPos[prevEvents.queue] ? { x: qPos[prevEvents.queue].x, z: -0.9 } : vPosEvent(prevEvents);
+      burst(at, prevEvents.color);
+    }
   }
   function vPosEvent(ev) { return { x: 0, z: 3.5 }; }
 
   function addSelectionRing(g, x, z) {
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.1, 32),
-      new THREE.MeshBasicMaterial({ color: 0x3b82f6, side: THREE.DoubleSide }));
+      glowMat(0x3b82f6, 1.8, { side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(x, 0.06, z);
     g.add(ring);
+    return ring;
+  }
+
+  // Gentle idle motion: pawns breathe, the selected vehicle lifts, lamps shimmer.
+  function stepAmbient(dt) {
+    const animated = gfx.q && gfx.q.ambient === 'animated' && motionAllowed();
+    const bob = boardGroup && boardGroup.userData.bob;
+    if (!animated) {
+      if (gfx.time !== 0 && bob) for (const b of bob) { b.o.position.y = b.y + (b.lift || 0); if (b.ring) b.ring.scale.setScalar(1); }
+      gfx.time = 0;
+      return;
+    }
+    gfx.time += dt;
+    const t = gfx.time;
+    if (bob) {
+      for (const b of bob) {
+        if (tweens.some(tw => tw.obj === b.o.position)) continue;
+        b.o.position.y = b.y + (b.lift || 0) + Math.sin(t * 2.2 + b.ph) * b.amp;
+        if (b.ring) b.ring.scale.setScalar(1 + 0.05 * Math.sin(t * 4));
+      }
+    }
+    const bulbs = scene3.env && scene3.env.userData.bulbs;
+    if (bulbs) bulbs.color.copy(scene3.env.userData.bulbBase).multiplyScalar(0.94 + 0.06 * Math.sin(t * 1.3));
   }
 
   /* ---- cosmetic tweens (interruptible, snap-safe) ---- */
@@ -741,13 +1021,18 @@
     m.position.set(x, 0.55, z);
     tweens.push({ obj: m.position, to: target, t: 0, dur: 0.4 });
   }
-  function burst(at, s) {
+  const sparkColor = new THREE.Color();
+  function burst(at, colorIndex) {
     if (store.settings.reducedMotion || !particles) return;
     const live = particles.userData.live;
-    for (let i = 0; i < Math.min(quality.particleCount, 12); i++) {
+    const base = colorIndex ? colorOf(colorIndex) : 0xffffff;
+    for (let i = 0; i < quality.particleCount; i++) {
+      // mix of vehicle-coloured confetti and white sparks; HDR under bloom
+      sparkColor.set(i % 3 === 0 ? 0xffffff : base).multiplyScalar(glow(2.4));
       live.push({
         x: at.x + (Math.random() - 0.5), y: 1 + Math.random(), z: at.z + (Math.random() - 0.5),
-        vx: (Math.random() - 0.5) * 1.5, vy: 2 + Math.random() * 1.5, vz: (Math.random() - 0.5) * 1.5, t: 0.8
+        vx: (Math.random() - 0.5) * 1.5, vy: 2 + Math.random() * 1.5, vz: (Math.random() - 0.5) * 1.5, t: 0.8,
+        r: sparkColor.r, g: sparkColor.g, b: sparkColor.b
       });
     }
     if (live.length > 200) live.splice(0, live.length - 200);
@@ -756,6 +1041,7 @@
     if (!particles) return;
     const live = particles.userData.live;
     const attr = particles.geometry.getAttribute('position');
+    const cattr = particles.geometry.getAttribute('color');
     for (let i = live.length - 1; i >= 0; i--) {
       const p = live[i];
       p.t -= dt; p.vy -= 4 * dt;
@@ -765,8 +1051,10 @@
     for (let i = 0; i < 200; i++) {
       const p = live[i];
       attr.setXYZ(i, p ? p.x : 0, p ? p.y : -10, p ? p.z : 0);
+      if (p) cattr.setXYZ(i, p.r, p.g, p.b);
     }
     attr.needsUpdate = true;
+    cattr.needsUpdate = true;
   }
   function stepTweens(dt) {
     for (let i = tweens.length - 1; i >= 0; i--) {
@@ -1223,8 +1511,115 @@
     computeQuality();
     applyHandedness();
     rebuildAll();
+    syncGfxPanel();
     saveStore();
     funnel('settings-change');
+  }
+
+  /* ---- Graphics section (built from the quality model; strings from gfx-i18n.js) ---- */
+  const GFX_CATS = Object.keys(GFX.CATEGORIES);
+  function gfxRow(host, label, forId, control, extra) {
+    const row = document.createElement('div');
+    row.className = 'set-row';
+    const lab = document.createElement('label');
+    lab.htmlFor = forId; lab.textContent = label;
+    row.append(lab, control);
+    if (extra) row.append(extra);
+    host.append(row);
+    return row;
+  }
+  function buildGfxPanel() {
+    const host = $('gfx-controls');
+    if (!host) return;
+    const sec = host.closest('section') || host.parentElement;
+    if (sec) sec.lang = GFX.pickLocale(navigator.language);
+    if ($('gfx-heading')) $('gfx-heading').textContent = GS.graphics;
+    if ($('gfx-quality-label')) $('gfx-quality-label').textContent = GS.quality;
+    host.textContent = '';
+    // render scale
+    const scale = document.createElement('input');
+    Object.assign(scale, { type: 'range', id: 'gfx-scale', min: 50, max: 200, step: 5 });
+    scale.dataset.gfx = 'render_scale';
+    const val = document.createElement('output');
+    val.id = 'gfx-scale-val'; val.htmlFor = 'gfx-scale'; val.className = 'gfx-val';
+    const scaleWrap = document.createElement('span');
+    scaleWrap.className = 'gfx-range';
+    scaleWrap.append(scale, val);
+    gfxRow(host, GS.renderScale, 'gfx-scale', scaleWrap);
+    scale.addEventListener('input', () => {
+      store.settings.gfx.render_scale = +scale.value / 100;
+      val.textContent = scale.value + '%';
+      applyGraphics(false);
+    });
+    // one select per category
+    for (const cat of GFX_CATS) {
+      const sel = document.createElement('select');
+      sel.id = 'gfx-' + cat;
+      sel.dataset.gfxCat = cat;
+      for (const v of ['preset'].concat(GFX.CATEGORIES[cat])) {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v === 'preset' ? '' : (GS.tiers[v] || v);
+        sel.append(o);
+      }
+      gfxRow(host, GS.cats[cat], sel.id, sel);
+      sel.addEventListener('change', () => {
+        if (sel.value === 'preset') delete store.settings.gfx[cat]; else store.settings.gfx[cat] = sel.value;
+        applyGraphics(cat === 'detail');
+      });
+    }
+    // toggles
+    for (const [id, key, label, def] of [['gfx-adaptive', 'adaptive', GS.adaptive, true], ['gfx-fps', 'show_fps', GS.showFps, false]]) {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.id = id; cb.dataset.gfx = key;
+      gfxRow(host, label, id, cb);
+      cb.addEventListener('change', () => {
+        if (cb.checked === def) delete store.settings.gfx[key]; else store.settings.gfx[key] = cb.checked;
+        applyGraphics(false);
+      });
+    }
+    const sum = document.createElement('p');
+    sum.id = 'gfx-summary'; sum.className = 'gfx-summary'; sum.setAttribute('aria-live', 'polite');
+    const note = document.createElement('p');
+    note.id = 'gfx-post-note'; note.className = 'gfx-note'; note.hidden = true; note.textContent = GS.postFailed;
+    host.append(sum, note);
+  }
+  // Apply graphics changes live; a detail change swaps meshes so the scene is rebuilt.
+  function applyGraphics(rebuild) {
+    computeQuality();
+    if (rebuild) rebuildAll();
+    syncGfxPanel();
+    saveStore();
+  }
+  function syncGfxPanel() {
+    const q = gfx.q;
+    if (!q || !$('gfx-controls')) return;
+    const qs = $('set-quality');
+    for (const o of qs.options) {
+      o.textContent = o.value === 'auto' ? GS.auto.replace('{tier}', GS.presets[gfx.detected]) : GS.presets[o.value];
+    }
+    qs.value = store.settings.quality;
+    const g = store.settings.gfx;
+    const pct = Math.round((Number(g.render_scale) || 1) * 100);
+    if ($('gfx-scale')) { $('gfx-scale').value = pct; $('gfx-scale-val').textContent = pct + '%'; }
+    for (const cat of GFX_CATS) {
+      const sel = $('gfx-' + cat);
+      if (!sel) continue;
+      const tier = GFX.presetTier(q.preset, cat);
+      sel.options[0].textContent = GS.fromPreset.replace('{tier}', GS.tiers[tier] || tier);
+      sel.value = GFX.CATEGORIES[cat].includes(g[cat]) ? g[cat] : 'preset';
+    }
+    if ($('gfx-adaptive')) $('gfx-adaptive').checked = q.adaptive;
+    if ($('gfx-fps')) $('gfx-fps').checked = q.showFps;
+    syncGfxSummary();
+    // pixel size settles after the next frame
+    requestAnimationFrame(() => requestAnimationFrame(syncGfxSummary));
+  }
+  function syncGfxSummary() {
+    const el = $('gfx-summary');
+    if (!el || !gfx.q) return;
+    const info = graphicsInfo();
+    el.textContent = info.gpu + ' · ' + info.summary;
+    $('gfx-post-note').hidden = !info.postFailed;
   }
   function applyHandedness() {
     const on = store.settings.leftHand;
@@ -1239,7 +1634,15 @@
     $('set-fx').addEventListener('input', e => { s.fx = +e.target.value; audio.applyVolumes(); saveStore(); });
     $('set-ambience').addEventListener('input', e => { s.ambience = +e.target.value; audio.applyVolumes(); saveStore(); });
     $('set-palette').addEventListener('change', e => { s.palette = e.target.value; applySettings(); });
-    $('set-quality').addEventListener('change', e => { s.quality = e.target.value; applySettings(); });
+    buildGfxPanel();
+    $('set-quality').addEventListener('change', e => {
+      // choosing a preset clears per-category overrides (scale, adaptive and fps are kept)
+      const next = GFX.choosePreset(s.gfx, e.target.value);
+      s.quality = next.preset;
+      delete next.preset;
+      s.gfx = next;
+      applySettings();
+    });
     $('set-motion').addEventListener('change', e => { s.reducedMotion = e.target.checked; applySettings(); });
     $('set-contrast').addEventListener('change', e => { s.highContrast = e.target.checked; applySettings(); });
     $('set-largetext').addEventListener('change', e => { s.largeText = e.target.checked; applySettings(); });
@@ -1495,7 +1898,8 @@
     pollGamepad();
     stepTweens(dt);
     stepParticles(dt);
-    if (scene3.ready) renderer.render(scene, camera);
+    stepAmbient(dt);
+    if (scene3.ready) renderFrame(dt);
   }
 
   // Bands of the viewport covered by fixed chrome (HUD, tray, coach); the
@@ -1601,6 +2005,7 @@
   // debug/test handle (read-only rules access plus flow control)
   window.__tt = {
     session, startRound, commitDispatch, undo, doHint, R, store,
+    graphicsInfo: () => (gfx.q ? graphicsInfo() : null),
     // client-space projection under the live (fitted) camera, for tests/tools
     projectWorld(x, y, z) {
       const rect = renderer.domElement.getBoundingClientRect();

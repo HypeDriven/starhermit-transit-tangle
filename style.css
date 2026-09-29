@@ -100,6 +100,20 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-vis
 .set-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 0; border-bottom: 1px solid var(--line); }
 .set-row label { flex: 1; }
 .set-row input[type="range"] { width: 150px; }
+.set-row select { max-width: 66%; min-height: 36px; font: inherit; font-size: .95em; }
+.gfx-section { margin-top: 16px; }
+.gfx-section h3 { margin: 0 0 4px; font-size: 1.05em; color: var(--ink-soft); }
+.gfx-range { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.gfx-range input[type="range"] { width: 130px; }
+.gfx-val { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.gfx-summary { margin: 10px 0 0; font-size: .88em; color: var(--ink-soft); overflow-wrap: anywhere; }
+.gfx-note { margin: 6px 0 0; font-size: .88em; color: var(--warn); }
+#fps-meter {
+  position: fixed; right: calc(8px + var(--sar)); bottom: calc(var(--tray-h, 64px) + 8px + var(--sab)); z-index: 9;
+  pointer-events: none; font: 600 12px/1.2 ui-monospace, monospace; color: var(--ink);
+  background: color-mix(in srgb, var(--panel) 80%, transparent); padding: 3px 7px; border-radius: 6px;
+}
+#fps-meter[hidden] { display: none; }
 
 /* ---------- journey map ---------- */
 .stage-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin: 10px 0; }
@@ -161,6 +175,7 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-vis
   #hud { gap: 4px 12px; font-size: .92em; }
   .stage-grid { grid-template-columns: repeat(5, 1fr); }
   .panel { padding: 16px; }
+  .gfx-range input[type="range"] { width: 96px; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
   #hud { font-size: .85em; padding-top: calc(4px + var(--sat)); }

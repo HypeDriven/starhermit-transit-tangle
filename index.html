@@ -181,11 +181,6 @@
         <option value="cvd">Color-vision safe</option>
         <option value="contrast">High contrast</option>
       </select></div>
-    <div class="set-row"><label for="set-quality">Graphics quality</label>
-      <select id="set-quality">
-        <option value="auto">Auto</option><option value="high">High</option>
-        <option value="medium">Medium</option><option value="low">Low</option>
-      </select></div>
     <div class="set-row"><label for="set-motion">Reduced motion</label><input type="checkbox" id="set-motion" /></div>
     <div class="set-row"><label for="set-contrast">High contrast UI</label><input type="checkbox" id="set-contrast" /></div>
     <div class="set-row"><label for="set-largetext">Larger text</label><input type="checkbox" id="set-largetext" /></div>
@@ -193,6 +188,15 @@
     <div class="set-row"><label for="set-captions">Text cues for sounds</label><input type="checkbox" id="set-captions" checked /></div>
     <div class="set-row"><label for="set-haptics">Haptics (vibration)</label><input type="checkbox" id="set-haptics" checked /></div>
     <div class="set-row"><label for="set-analytics">Anonymous usage stats</label><input type="checkbox" id="set-analytics" /></div>
+    <section class="gfx-section" aria-labelledby="gfx-heading">
+      <h3 id="gfx-heading">Graphics</h3>
+      <div class="set-row"><label for="set-quality" id="gfx-quality-label">Quality</label>
+        <select id="set-quality" data-gfx="preset">
+          <option value="auto">Auto</option><option value="low">Low</option><option value="balanced">Balanced</option>
+          <option value="high">High</option><option value="ultra">Ultra</option>
+        </select></div>
+      <div id="gfx-controls"></div>
+    </section>
     <div class="row">
       <button type="button" class="btn secondary" id="btn-replay-tutorial">Replay tutorial</button>
       <button type="button" class="btn" id="btn-settings-close">Done</button>
@@ -217,9 +221,15 @@
 </section>
 
 <script src="rules.js"></script>
+<script type="importmap">{ "imports": { "three": "./three.min.js", "three/addons/": "./vendor/three/addons/" } }</script>
 <script type="module">
-  import * as THREE from './three.min.js';
+  import * as THREE from 'three';
+  import * as gfxModel from './gfx.js';
+  import { gfxStrings, pickLocale } from './gfx-i18n.js';
   window.THREE = THREE;
+  window.TTGfx = { ...gfxModel, gfxStrings, pickLocale };
+  // Post-processing and IBL are enhancements: without them the game renders directly.
+  try { Object.assign(window.TTGfx, await import('./gfx-render.js')); } catch (e) { window.TTGfx.renderUnavailable = true; }
   await import('./app.js');
 </script>
 </body>

@@ -65,7 +65,8 @@ window.onerror = (m, s, l) => { window.__log.push('PAGEERROR: ' + m + ' @' + s +
   <h2 id="settings-h">Settings</h2>
   <input type="range" id="set-music"><input type="range" id="set-fx"><input type="range" id="set-ambience">
   <select id="set-palette"><option value="default">d</option><option value="cvd">c</option><option value="contrast">h</option></select>
-  <select id="set-quality"><option value="auto">a</option><option value="high">h</option><option value="medium">m</option><option value="low">l</option></select>
+  <select id="set-quality"><option value="auto">a</option><option value="low">l</option><option value="balanced">b</option><option value="high">h</option><option value="ultra">u</option></select>
+  <div id="gfx-controls"></div>
   <input type="checkbox" id="set-motion"><input type="checkbox" id="set-contrast">
   <input type="checkbox" id="set-largetext"><input type="checkbox" id="set-lefthand">
   <input type="checkbox" id="set-captions"><input type="checkbox" id="set-haptics">
@@ -78,9 +79,14 @@ window.onerror = (m, s, l) => { window.__log.push('PAGEERROR: ' + m + ' @' + s +
   <div id="scores-content"></div><button id="btn-scores-close">Close</button></div></section>
 
 <script src="rules.js"></script>
+<script type="importmap">{ "imports": { "three": "./three.min.js", "three/addons/": "./vendor/three/addons/" } }</script>
 <script type="module">
-  import * as THREE from './three.min.js';
+  import * as THREE from 'three';
+  import * as gfxModel from './gfx.js';
+  import { gfxStrings, pickLocale } from './gfx-i18n.js';
   window.THREE = THREE;
+  window.TTGfx = { ...gfxModel, gfxStrings, pickLocale };
+  try { Object.assign(window.TTGfx, await import('./gfx-render.js')); } catch (e) { window.TTGfx.renderUnavailable = true; }
   await import('./app.js');
   const T = window.__tt;
   const assert = (c, m) => { if (!c) throw new Error('ASSERT: ' + m); console.log('ok - ' + m); };

@@ -193,13 +193,65 @@ async function startPractice(page) {
 }
 
 // ---------- one full pass ----------
+// Settings → Graphics through the visible controls: Low, then High, one override,
+// applied immediately (data-gfx-preset + summary) and restored after a reload.
+async function graphicsFlow(page, name) {
+  const gfxState = () => page.evaluate(() => ({
+    preset: document.body.dataset.gfxPreset,
+    summary: document.getElementById('gfx-summary')?.textContent || '',
+    info: window.__tt.graphicsInfo(),
+  }));
+  await page.click('#btn-settings2');
+  await overlayVisible(page, 'screen-settings');
+  await page.locator('#set-quality').scrollIntoViewIfNeeded();
+  const autoLabel = await page.locator('#set-quality option[value="auto"]').textContent();
+  if (!/Auto \(detected: /.test(autoLabel)) throw new Error(`auto label: ${autoLabel}`);
+  await page.selectOption('#set-quality', 'low');
+  await page.waitForFunction(() => document.body.dataset.gfxPreset === 'low');
+  let g = await gfxState();
+  if (!/no shadows/.test(g.summary) || g.info.resolved.post) throw new Error(`low not applied: ${g.summary}`);
+  await page.selectOption('#set-quality', 'high');
+  await page.waitForFunction(() => document.body.dataset.gfxPreset === 'high');
+  g = await gfxState();
+  if (!/2048² shadows/.test(g.summary)) throw new Error(`high not applied: ${g.summary}`);
+  const bloomLabel = await page.locator('#gfx-bloom option[value="preset"]').textContent();
+  if (bloomLabel !== 'From preset (On)') throw new Error(`bloom preset label: ${bloomLabel}`);
+  await page.locator('#gfx-bloom').scrollIntoViewIfNeeded();
+  await page.selectOption('#gfx-bloom', 'off');
+  await page.waitForFunction(() => window.__tt.graphicsInfo().resolved.bloom === 'off');
+  await page.waitForTimeout(400); // a few frames with the High chain
+  const shot = SHOT('graphics', name);
+  await page.locator('#gfx-summary').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: shot });
+  ok(`${name}: graphics preset Low → High and bloom override applied live`);
+
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => !!window.__tt && window.__tt.session.screen === 'title');
+  await page.click('#btn-settings2');
+  await overlayVisible(page, 'screen-settings');
+  const after = await page.evaluate(() => ({
+    preset: document.body.dataset.gfxPreset,
+    quality: document.getElementById('set-quality').value,
+    bloom: document.getElementById('gfx-bloom').value,
+  }));
+  if (after.preset !== 'high' || after.quality !== 'high' || after.bloom !== 'off') {
+    throw new Error(`graphics settings not persisted: ${JSON.stringify(after)}`);
+  }
+  // back to Auto (clears the override) so the rest of the run stays cheap
+  await page.selectOption('#set-quality', 'auto');
+  await page.waitForFunction(() => document.getElementById('gfx-bloom').value === 'preset');
+  await page.click('#btn-settings-close');
+  await overlayGone(page, 'screen-settings');
+  ok(`${name}: graphics settings survive a reload; choosing a preset clears overrides`);
+}
+
 async function runPass(browser, name, ctxOpts, { full }) {
   const errors = [];
   const context = await browser.newContext(ctxOpts);
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() !== 'error' || browserNoise.test(m.text())) return;
+    if ((m.type() !== 'error' && m.type() !== 'warning') || browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
     if (/Failed to load resource/.test(m.text()) && /\/api\/|\/favicon/.test(url)) return;
     errors.push(`console: ${m.text()}`);
@@ -227,6 +279,9 @@ async function runPass(browser, name, ctxOpts, { full }) {
     await page.click('#btn-settings-close');
     await overlayGone(page, 'screen-settings');
     ok(`${name}: help and settings open/close from the title`);
+
+    // Graphics section: preset switch, one override, live apply, persistence
+    await graphicsFlow(page, name);
 
     // start a real game via visible controls: Practice → Easy
     await startPractice(page);
