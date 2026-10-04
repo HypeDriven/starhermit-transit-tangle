@@ -21,16 +21,9 @@
  * queue with no vehicle selected is still rejected. Keyboard selection
  * (Left/Right → Enter) is unchanged and used for every other dispatch.
  *
- * Serving: the repo ships `server.js` (StarHermit authoritative script,
- * declared by starhermit.txt), but its round engine is deterministic and the
- * game is fully playable offline (spec: "ordinary practice can run locally
- * and offline after initial load"). Per the sibling conventions this test
- * embeds a minimal node:http static server on an ephemeral port and answers
- * the platform probes with JSON (`/api/v1/time` with a real timestamp so the
- * clock sync and daily countdown run cleanly; other `/api/*` as 200 `{}`) so
- * the client stays online-ish with zero console noise and, crucially, never
- * writes to the game's `data/` store. Today spawning the real backend is not
- * needed for a play-through; it can be swapped in if the UI ever requires it.
+ * Serving: a minimal node:http static server on an ephemeral port (unknown
+ * paths 404). Standalone (no launch token) the game must make zero
+ * same-origin /api or /ws requests; each pass records any as an error.
  *
  * Run: npm run test:e2e  (or: node tests/e2e.mjs)
  */
@@ -68,18 +61,6 @@ const server = http.createServer(async (req, res) => {
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p === '/') p = '/index.html';
-    // No StarHermit backend here: answer the platform probes so the client
-    // degrades cleanly. clock sync gets a real timestamp; others empty JSON.
-    if (p === '/api/v1/time') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ now: Date.now(), iso: new Date().toISOString() }));
-      return;
-    }
-    if (p.startsWith('/api/')) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end('{}');
-      return;
-    }
     const file = path.normalize(path.join(ROOT, p));
     if (!file.startsWith(ROOT)) { res.writeHead(403).end('forbidden'); return; }
     const data = await readFile(file);
@@ -249,16 +230,20 @@ async function runPass(browser, name, ctxOpts, { full }) {
   const errors = [];
   const context = await browser.newContext(ctxOpts);
   const page = await context.newPage();
+  page.on('request', (r) => {
+    const u = new URL(r.url());
+    if (u.origin === BASE && /^\/(api|ws)(\/|$)/.test(u.pathname)) errors.push(`standalone own-server request: ${u.pathname}`);
+  });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
     if ((m.type() !== 'error' && m.type() !== 'warning') || browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
-    if (/Failed to load resource/.test(m.text()) && /\/api\/|\/favicon/.test(url)) return;
+    if (/Failed to load resource/.test(m.text()) && /\/favicon/.test(url)) return;
     errors.push(`console: ${m.text()}`);
   });
   page.on('response', (r) => {
     const p = r.url();
-    if (r.status() >= 400 && !/\/api\/|\/favicon/.test(p)) errors.push(`http ${r.status()}: ${p}`);
+    if (r.status() >= 400 && !/\/favicon/.test(p)) errors.push(`http ${r.status()}: ${p}`);
   });
 
   try {

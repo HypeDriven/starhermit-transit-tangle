@@ -39,7 +39,7 @@ Win when all passengers leave; lose when every holding position is blocked. Resu
 
 ### Modes
 
-- **Learn:** interactive lessons introduce one rule at a time and require the player to perform the action. The lesson coach sits above the measured action tray (docked as a right-hand column in short landscape) and can be hidden to a chip; the camera frames the whole board inside the area not covered by HUD, tray or coach. The daily countdown only uses a finite server time (falls back to the local clock).
+- **Learn:** interactive lessons introduce one rule at a time and require the player to perform the action. The lesson coach sits above the measured action tray (docked as a right-hand column in short landscape) and can be hidden to a chip; the camera frames the whole board inside the area not covered by HUD, tray or coach. The daily countdown uses the local clock.
 - **Journey:** authored progression with gradually combined mechanics and periodic mastery stages.
 - **Daily:** one shared seed and ruleset per UTC day, synchronized to platform time.
 - **Practice:** selectable difficulty, restart, undo where rules permit, and no effect on competitive rating.
@@ -190,14 +190,16 @@ No module may mutate rules state except through a validated command. Rendering c
 ## 6. StarHermit integration
 
 ### Packaging and launch
-- Ship a browser distribution with `starhermit.txt` at its root, `name=Transit Tangle`, and `launch=index.html`. Keep source files, secrets, design documents, and source maps outside the uploaded distribution.
-- Read the game scope from the short-lived launch token rather than hard-coding a slug. Use same-origin `/api` and `/ws` routes when hosted. Refresh account tokens through the host shell; never persist access or launch tokens in local storage.
-- Synchronize countdowns and daily boundaries with `GET /api/v1/time` using round-trip-adjusted offset. Treat rate limits and structured `{"error":"..."}` responses as recoverable UI states.
+- Ships `starhermit.txt` (`name=Transit Tangle`, `launch=index.html`, `control.*` key declarations) and a copy of the canonical `starhermit-sdk.js`, loaded by `index.html` before `platform.js` and the app. `platform.js` (`TTPlatform`, shared with Node tests) is a thin adapter over `window.StarHermit`: `init()` calls `StarHermit.init()`, which reads `#game_token=` (library launch) or `#access_token=` (direct sign-in return), strips it, takes the slug from the `game_scope` claim and renews the token on the SDK's schedule. Tokens are never persisted.
+- On `*.starhermit.com` without a token the title shows a localized "Sign in with StarHermit" button (`StarHermit.signIn()`), hidden when signed in and off-platform. If renewal is refused the SDK signs out: a localized toast says progress stays on this device, the sign-in button returns and play continues locally.
+- Without a token the game makes no request to any `/api/…` or `/ws` route, on any host including localhost. The daily countdown uses the local clock (labeled); the client never calls this repo's own `server.js` routes. Standalone, Scores shows the device's personal best per board.
 
 ### Identity, profile, presence, and preferences
-- Support guest practice locally, then account sign-in for durable progress when hosted. Display the account nickname from `GET /api/v1/users/{id}/profile` (never the username) where identity is useful and honor profile privacy; the game sends no presence calls.
-- Store accessibility, audio, graphics tier, tutorial completion, camera preference, and rules options through per-game settings. Declare desktop action bindings and read player overrides; touch mappings remain responsive UI controls.
-- Cloud-save progression through the platform cloud-saves slot: the versioned local document (settings, progress, achievements, personal bests) is mirrored as a single-entry zip+base64 document under `/api/v1/me/cloud-saves/{slug}`; loads prefer the remote copy on conflict, saves are debounced and flushed on pagehide, and localStorage remains the offline cache. Never place credentials or private chat in saves.
+- Guests play locally. Signed in, the title account line shows the profile nickname (`StarHermit.profile()`, fallback "Player <id>") and the cloud-sync state. No presence calls.
+- Preferences (volumes, palette, quality/graphics, reduced motion, high contrast, large text, left-handed, captions, haptics) are mirrored to the platform settings KV with a debounced `patchSettings` of changed keys; at start they are applied on top of the cloud save (platform values win). Analytics consent stays per device.
+- Keyboard actions are declared as `control.*` lines (`KeyboardEvent.code`); at start `StarHermit.loadBindings()` applies the player's platform overrides, keydown (and the gamepad's synthesized key events) is routed by `event.code`, and the Help screen's controls line shows the effective keys. There is no in-game rebinding UI; touch stays responsive UI.
+- Cloud save: the versioned store document (settings, progress, achievements, personal bests) lives in the `game:<slug>` slot via `saveJSON`/`loadJSON`, loaded remote-first at start (field-by-field remote wins; an empty slot is seeded from the local cache), saved debounced and flushed with keepalive on `pagehide`/hidden. localStorage remains the offline cache.
+- Signed in, the title shows a localized "Invite a friend" button that copies `StarHermit.inviteLink()` to the clipboard with a confirmation toast.
 
 ### Discovery, activity, and social layer
 - Launch activity and presence are host-owned; the game starts no activity or telemetry calls itself. Surface entitlement or catalog state only in host-owned chrome; the game itself must remain playable without promotional interruption.
@@ -206,11 +208,11 @@ No module may mutate rules state except through a validated command. Rendering c
 
 ### Achievements and leaderboards
 - Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
-- Hosted clients read the platform leaderboard only (clients can never submit scores); personal bests are kept locally and cloud-saved. The dev server's board accepts submissions with ruleset, content version, seed, assists, and duration, and rejects impossible or stale-version scores.
-- For globally competitive boards, validate score claims through replay re-simulation using replayable input logs and deterministic seeds — this repo's `server.js` does so for local dev. If validation is unavailable, label the board casual and apply plausibility/rate checks.
+- Hosted clients read the platform leaderboard only (`StarHermit.leaderboard()`, nicknames via `profile()`; clients can never submit scores); personal bests are kept locally and cloud-saved. The client never posts scores or achievements to `server.js`; its replay-validating board (ruleset, content version, seed, assists, duration) remains for tooling/tests only.
+- For globally competitive boards, validate score claims through replay re-simulation using replayable input logs and deterministic seeds — this repo's `server.js` implements it, but the client does not call it. If validation is unavailable, label the board casual and apply plausibility/rate checks.
 
 ### Sessions and transport
-- The initial game is solo; ordinary practice runs locally and offline after initial load. This repo's `server.js` is a local-dev backend (static hosting, replay validation, dev scoreboard) — not a platform game script, so hosted achievement state lives in the cloud-saved document.
+- The initial game is solo; ordinary practice runs locally and offline after initial load. This repo's `server.js` is a local-dev static host (its replay validation and scoreboard routes are not called by the client) — not a platform game script, so hosted achievement state lives in the cloud-saved document.
 - A daily session records content version, seed, settings affecting difficulty, an ordered input log, score components, and final checksum. Reconnect from the durable session snapshot rather than trusting cached client state.
 - Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
 

@@ -86,6 +86,8 @@
       <button type="button" class="btn small secondary" id="btn-scores">Scores</button>
       <button type="button" class="btn small secondary" id="btn-help2">Help</button>
       <button type="button" class="btn small secondary" id="btn-settings2">Settings</button>
+      <button type="button" class="btn small secondary" id="btn-signin" hidden>Sign in with StarHermit</button>
+      <button type="button" class="btn small secondary" id="btn-invite" hidden>Invite a friend</button>
     </div>
     <p id="daily-countdown" aria-live="polite"></p>
     <p id="title-progress"></p>
@@ -221,12 +223,16 @@
   </div>
 </section>
 
+<script src="starhermit-sdk.js"></script>
 <script src="rules.js"></script>
+<script src="platform.js"></script>
 <script type="importmap">{ "imports": { "three": "./three.min.js", "three/addons/": "./vendor/three/addons/" } }</script>
 <script type="module">
   import * as THREE from 'three';
   import * as gfxModel from './gfx.js';
   import { gfxStrings, pickLocale } from './gfx-i18n.js';
+  import { shText } from './sh-i18n.js';
+  window.TTSh = { shText };
   window.THREE = THREE;
   window.TTGfx = { ...gfxModel, gfxStrings, pickLocale };
   // Post-processing and IBL are enhancements: without them the game renders directly.
