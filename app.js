@@ -1123,7 +1123,11 @@
     if (map[name]) {
       $(map[name]).hidden = false;
       const focusable = $(map[name]).querySelector('button');
-      if (focusable) focusable.focus();
+      // keep the panel's heading in view: focusing a button low in a tall,
+      // scrolling panel (Done, Close, Play again) must not scroll it away
+      if (focusable) focusable.focus({ preventScroll: true });
+      const panel = $(map[name]).querySelector('.panel');
+      if (panel) panel.scrollTop = 0;
     }
     if (name === 'active' || name === 'preparing') { /* canvas only */ }
     ui.updateHUD();

@@ -78,7 +78,7 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-vis
 .panel {
   background: var(--panel); color: var(--ink); border-radius: 16px;
   border: 1px solid var(--line); box-shadow: 0 12px 40px rgba(20,35,55,.25);
-  padding: 22px; width: min(560px, 100%); max-height: min(84vh, 700px);
+  padding: 22px; width: min(560px, 100%); max-height: min(calc(84vh / var(--ui-scale, 1)), 700px);
   overflow: auto;
 }
 .panel h1, .panel h2 { margin: 0 0 10px; }
@@ -131,7 +131,7 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-vis
   position: fixed; left: 50%; transform: translateX(-50%);
   bottom: calc(var(--tray-h, 76px) + 10px + var(--sab)); z-index: 15;
   background: var(--panel); border: 2px solid var(--accent); border-radius: 12px;
-  padding: 10px 16px; width: max-content; max-width: min(520px, 92vw); box-shadow: 0 6px 24px rgba(20,35,55,.25);
+  padding: 10px 16px; width: max-content; max-width: min(520px, calc(92vw / var(--ui-scale, 1))); box-shadow: 0 6px 24px rgba(20,35,55,.25);
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
 }
 #coach .coach-text { flex: 1 1 200px; }
@@ -150,7 +150,14 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-vis
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
-#board-mirror { position: fixed; left: calc(10px + var(--sal)); bottom: calc(86px + var(--sab)); z-index: 7; }
+#board-mirror { position: fixed; left: calc(10px + var(--sal)); bottom: calc(86px + var(--sab)); z-index: 9; }
+/* the left rail ends above the board-state toggle so the two never overlap */
+@media (min-width: 1024px) { #rail-left { bottom: 132px; } }
+/* portrait phones/tablets: the tray (often two rows) and the coach own the
+   bottom edge, so the board-state toggle sits under the HUD instead */
+@media (max-width: 1023px) and (orientation: portrait) {
+  #board-mirror { bottom: auto; top: calc(var(--hud-h, 48px) + 8px); }
+}
 #board-mirror details { background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; max-width: 320px; }
 #board-mirror summary { cursor: pointer; font-weight: 600; }
 
@@ -168,7 +175,7 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-vis
   .rail.open {
     display: block; position: fixed; top: auto; bottom: calc(70px + var(--sab));
     left: calc(8px + var(--sal)); right: calc(8px + var(--sar)); width: auto;
-    max-height: 50vh; z-index: 16;
+    max-height: calc(50vh / var(--ui-scale, 1)); z-index: 16;
   }
 }
 @media (max-width: 640px) {
@@ -183,6 +190,12 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-vis
   .btn { padding: 10px 16px; }
   /* coach docks as a right-hand column; the board is framed beside it */
   #coach { left: auto; right: calc(8px + var(--sar)); transform: none; top: calc(var(--hud-h, 48px) + 8px + var(--sat)); bottom: auto;
-    max-width: min(240px, 34vw); max-height: calc(100vh - var(--hud-h, 48px) - var(--tray-h, 60px) - 24px); overflow-y: auto; font-size: .9em; padding: 8px 10px; }
+    max-width: min(240px, calc(34vw / var(--ui-scale, 1))); max-height: calc(100vh / var(--ui-scale, 1) - var(--hud-h, 48px) - var(--tray-h, 60px) - 24px); overflow-y: auto; font-size: .9em; padding: 8px 10px; }
 }
 body.reduced-motion * { transition: none !important; animation: none !important; }
+
+/* ---------- large screens ----------
+   ui-scale.js sets --ui-scale (1 up to 1600x1000, then viewport/1600x1000);
+   every fixed DOM layer is zoomed by it so the UI keeps its proportions on
+   2K/4K/ultrawide monitors. The full-viewport canvas stays unzoomed. */
+#hud, .rail, #tray, .overlay, #coach, #toast, #board-mirror, #countdown, #fps-meter { zoom: var(--ui-scale, 1); }
