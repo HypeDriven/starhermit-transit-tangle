@@ -192,7 +192,7 @@ No module may mutate rules state except through a validated command. Rendering c
 ## 6. StarHermit integration
 
 ### Packaging and launch
-- Ships `starhermit.txt` (`name=Transit Tangle`, `launch=index.html`, `control.*` key declarations) and a copy of the canonical `starhermit-sdk.js`, loaded by `index.html` before `platform.js` and the app. `platform.js` (`TTPlatform`, shared with Node tests) is a thin adapter over `window.StarHermit`: `init()` calls `StarHermit.init()`, which reads `#game_token=` (library launch) or `#access_token=` (direct sign-in return), strips it, takes the slug from the `game_scope` claim and renews the token on the SDK's schedule. Tokens are never persisted.
+- Ships `starhermit.txt` (`name=Transit Tangle`, `launch=index.html`, `server=score-script.js`, `control.*` key declarations) and a copy of the canonical `starhermit-sdk.js`, loaded by `index.html` before `platform.js` and the app. `platform.js` (`TTPlatform`, shared with Node tests) is a thin adapter over `window.StarHermit`: `init()` calls `StarHermit.init()`, which reads `#game_token=` (library launch) or `#access_token=` (direct sign-in return), strips it, takes the slug from the `game_scope` claim and renews the token on the SDK's schedule. Tokens are never persisted.
 - On `*.starhermit.com` without a token the title shows a localized "Sign in with StarHermit" button (`StarHermit.signIn()`), hidden when signed in and off-platform. If renewal is refused the SDK signs out: a localized toast says progress stays on this device, the sign-in button returns and play continues locally.
 - Without a token the game makes no request to any `/api/…` or `/ws` route, on any host including localhost. The daily countdown uses the local clock (labeled); the client never calls this repo's own `server.js` routes. Standalone, Scores shows the device's personal best per board.
 
@@ -210,16 +210,16 @@ No module may mutate rules state except through a validated command. Rendering c
 
 ### Achievements and leaderboards
 - Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
-- Hosted clients read the platform leaderboard only (`StarHermit.leaderboard()`, nicknames via `profile()`; clients can never submit scores); personal bests are kept locally and cloud-saved. The client never posts scores or achievements to `server.js`; its replay-validating board (ruleset, content version, seed, assists, duration) remains for tooling/tests only.
+- Signed in, every finished ranked round (Journey, Daily, Challenge) posts its total, floored at 0, through `StarHermit.submitScores` (a practice session whose `score-script.js` range-checks it and posts it to the `high-score` board, integer, higher is better, 0–100,000); the results screen shows "Leaderboard rank: #N" (or posted / not posted; strings in `sh-i18n.js`, nine locales). Practice, Learn and standalone rounds post nothing. Scores reads the same board (`StarHermit.leaderboard()`, nicknames via `profile()`); personal bests are kept locally and cloud-saved. The client never posts scores or achievements to `server.js`; its replay-validating board (ruleset, content version, seed, assists, duration) remains for tooling/tests only.
 - For globally competitive boards, validate score claims through replay re-simulation using replayable input logs and deterministic seeds — this repo's `server.js` implements it, but the client does not call it. If validation is unavailable, label the board casual and apply plausibility/rate checks.
 
 ### Sessions and transport
-- The initial game is solo; ordinary practice runs locally and offline after initial load. This repo's `server.js` is a local-dev static host (its replay validation and scoreboard routes are not called by the client) — not a platform game script, so hosted achievement state lives in the cloud-saved document.
+- The initial game is solo; ordinary practice runs locally and offline after initial load. This repo's `server.js` is a local-dev static host (its replay validation and scoreboard routes are not called by the client); the platform script `score-script.js` only posts scores, so hosted achievement state lives in the cloud-saved document.
 - A daily session records content version, seed, settings affecting difficulty, an ordered input log, score components, and final checksum. Reconnect from the durable session snapshot rather than trusting cached client state.
 - Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
 
 ### Publishing and operations
-- Keep the authoritative script inside the distribution and declare it with `server=server.js`. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
+- The platform script ships inside the distribution and is declared with `server=score-script.js` (canonical copy in the games repo's `tools/score-script.js`); it range-checks scores but does not replay-validate them. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
 - Define control defaults, achievement metadata, and versioned settings before release. Publish immutable build assets, verify the launch path, maintain migration tests for saves, and expose no secret configuration to the client.
 - Capture anonymous funnel events only for start, tutorial step, round end, retry, settings change, and error category. Avoid raw text, precise personal data, and cross-title tracking.
 

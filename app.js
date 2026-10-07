@@ -1030,15 +1030,16 @@
       if (store.progress.best[bk] == null || sc.total > store.progress.best[bk]) store.progress.best[bk] = sc.total;
     }
     saveStore();
-    // score submission (ranked modes). Hosted: clients can never submit to a
-    // platform leaderboard — the personal best above is cloud-saved instead.
-    let submitted = null;
+    // Ranked modes: local runs keep the personal best above; signed in, every
+    // finished ranked round also posts its total (score-script.js).
+    let submitted = null, lbPost = null;
     if (session.ranked && net.hosted) {
       submitted = Promise.resolve('Signed in as ' + displayName() + ' — personal best saved to your profile.');
+      lbPost = P.submitScore(Math.max(0, sc.total)); // the board's floor is 0
     } else if (session.ranked) {
       submitted = Promise.resolve('Score kept in your local records.');
     }
-    ui.showResults(sc, won, newAch, submitted);
+    ui.showResults(sc, won, newAch, submitted, lbPost);
     setScreen('results');
   }
 
@@ -1168,7 +1169,7 @@
         'Journey: ' + store.progress.journeyDone.length + '/' + R.JOURNEY_STAGES + ' stages · wins ' + store.progress.wins +
         (store.progress.streak >= 2 ? ' · streak ' + store.progress.streak : '');
     },
-    showResults(sc, won, newAch, submitted) {
+    showResults(sc, won, newAch, submitted, lbPost) {
       $('results-h').textContent = won ? 'All passengers away!' : 'Round lost';
       $('results-reason').textContent = {
         'all-passengers-boarded': 'Every queue cleared — nice dispatching.',
@@ -1192,6 +1193,15 @@
         : 'Tip: spare seats on a matched vehicle rescue holding passengers.';
       $('results-achievements').textContent = newAch.length ? 'Achievement unlocked: ' + newAch.join(', ') : '';
       if (submitted) submitted.then(t => { $('results-achievements').textContent += ($('results-achievements').textContent ? ' ' : '') + t; });
+      const lb = $('results-lb'), seq = lb.dataset.seq = String(+(lb.dataset.seq || 0) + 1);
+      lb.hidden = !lbPost;
+      if (lbPost) {
+        lb.textContent = ST('lbPosting');
+        lbPost.then(r => {
+          if (lb.dataset.seq !== seq) return; // a newer round's results are showing
+          lb.textContent = !r.posted ? ST('lbNotPosted') : r.rank ? ST('lbRank', { rank: r.rank }) : ST('lbPosted');
+        });
+      }
       $('btn-results-next').textContent = won && session.mode === 'journey' && session.stage < R.JOURNEY_STAGES - 1 ? 'Next stage'
         : won && session.mode === 'learn' && session.lesson < 2 ? 'Next lesson' : 'Play again';
       announce($('results-h').textContent + '. ' + $('results-reason').textContent + ' Total score ' + sc.total + '.');

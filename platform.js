@@ -103,7 +103,20 @@
         if (net.hosted) bindings = await SH.loadBindings(DEFAULT_BINDINGS);
         return bindings;
       },
-      /** Read-only platform board: { entries } or null when none is declared. */
+      /** Post a finished round's total to the high-score board (score-script.js);
+       *  resolves { posted, rank } (rank or null). No request standalone. */
+      async submitScore(total) {
+        if (!net.hosted) return { posted: false, rank: null };
+        let keys = [];
+        try { keys = await SH.submitScores({ 'high-score': total }); } catch (e) { keys = []; }
+        if (!keys || keys.indexOf('high-score') < 0) return { posted: false, rank: null };
+        try {
+          const r = await SH.leaderboard('high-score', { pageSize: 100 });
+          const me = ((r && r.items) || []).find(i => i.userId === SH.userId);
+          return { posted: true, rank: me ? me.rank : null };
+        } catch (e) { return { posted: true, rank: null }; }
+      },
+      /** Platform board (the game's first): { entries } or null when none is declared. */
       async loadPlatformBoard() {
         if (!net.hosted) return null;
         const r = await SH.leaderboard(null, { pageSize: 50 });
