@@ -137,7 +137,7 @@
         for (const name of ['music', 'fx', 'ambience']) {
           const g = audio.ctx.createGain();
           g.connect(audio.ctx.destination);
-          audio.buses[name] = g;
+          audio.buses[name] = (globalThis.GameOptions ? globalThis.GameOptions.tagBus(g, name) : g);
         }
         audio.applyVolumes();
         audio.startAmbience();
@@ -154,7 +154,7 @@
     blip(freq, dur, type, vol, bus) {
       if (!audio.ctx) return;
       try {
-        const o = audio.ctx.createOscillator(), g = audio.ctx.createGain();
+        const o = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(audio.ctx.createOscillator(), bus) : audio.ctx.createOscillator()), g = audio.ctx.createGain();
         o.type = type || 'sine'; o.frequency.value = freq;
         const t = audio.ctx.currentTime;
         g.gain.setValueAtTime(vol, t);
@@ -171,7 +171,7 @@
       const cached = audio.sfx[name];
       if (cached instanceof AudioBuffer) {
         try {
-          const src = audio.ctx.createBufferSource();
+          const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(audio.ctx.createBufferSource(), name) : audio.ctx.createBufferSource());
           src.buffer = cached;
           src.connect(audio.buses.fx);
           src.start();
@@ -193,9 +193,9 @@
     },
     startAmbience() {
       if (!audio.ctx) return;
-      const o = audio.ctx.createOscillator(), g = audio.ctx.createGain();
+      const o = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(audio.ctx.createOscillator(), null) : audio.ctx.createOscillator()), g = audio.ctx.createGain();
       o.type = 'sine'; o.frequency.value = 110;
-      const lfo = audio.ctx.createOscillator(), lg = audio.ctx.createGain();
+      const lfo = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(audio.ctx.createOscillator(), null) : audio.ctx.createOscillator()), lg = audio.ctx.createGain();
       lfo.frequency.value = 0.13; lg.gain.value = 12;
       lfo.connect(lg).connect(o.frequency);
       g.gain.value = 0.5;
@@ -402,9 +402,9 @@
     const key = q.post ? [q.ao, q.bloom, q.grade, q.antialias, w, h, ratio].join('|') : 'none';
     if (key !== gfx.postKey) { gfx.postKey = key; buildPost(w, h, ratio); }
     if (gfx.composer) {
-      try { gfx.composer.render(dt); return; } catch (e) { gfx.composer.dispose(); gfx.composer = null; gfx.postFailed = true; syncGfxSummary(); }
+      try { (globalThis.GameOptions ? globalThis.GameOptions.draw(gfx.composer.renderer, () => gfx.composer.render(dt)) : gfx.composer.render(dt)); return; } catch (e) { gfx.composer.dispose(); gfx.composer = null; gfx.postFailed = true; syncGfxSummary(); }
     }
-    renderer.render(scene, camera);
+    (globalThis.GameOptions ? globalThis.GameOptions.draw(renderer, () => renderer.render(scene, camera)) : renderer.render(scene, camera));
   }
 
   function graphicsInfo() {
