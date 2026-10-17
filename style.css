@@ -98,9 +98,9 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-vis
 
 /* ---------- settings ---------- */
 .set-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 0; border-bottom: 1px solid var(--line); }
-.set-row label { flex: 1; }
+.set-row label { flex: 1; min-width: 0; overflow-wrap: break-word; hyphens: auto; }
 .set-row input[type="range"] { width: 150px; }
-.set-row select { max-width: 66%; min-height: 36px; font: inherit; font-size: .95em; }
+.set-row select { max-width: 66%; min-width: 0; flex-shrink: 1; min-height: 36px; font: inherit; font-size: .95em; }
 .gfx-section { margin-top: 16px; }
 .gfx-section h3 { margin: 0 0 4px; font-size: 1.05em; color: var(--ink-soft); }
 .gfx-range { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
@@ -183,6 +183,10 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, input:focus-vis
   .stage-grid { grid-template-columns: repeat(5, 1fr); }
   .panel { padding: 16px; }
   .gfx-range input[type="range"] { width: 96px; }
+  /* long single-word labels (German) keep room next to the controls */
+  .set-row { gap: 10px; }
+  .set-row input[type="range"] { width: 112px; }
+  .set-row select { max-width: 58%; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
   #hud { font-size: .85em; padding-top: calc(4px + var(--sat)); }

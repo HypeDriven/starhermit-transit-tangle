@@ -126,5 +126,27 @@
     return P;
   }
 
-  return { create, PREF_KEYS, DEFAULT_BINDINGS };
+  /**
+   * Progress from two devices: journey stages and play days united, the
+   * furthest unlocked stage, tutorial done if either says so, the larger win
+   * count and streak, and the better best per board. Either side may be null.
+   */
+  function mergeProgress(remote, local) {
+    const a = remote && typeof remote === 'object' ? remote : {};
+    const b = local && typeof local === 'object' ? local : {};
+    const union = (x, y) => Array.from(new Set([].concat(x || [], y || [])));
+    const best = Object.assign({}, a.best);
+    Object.keys(b.best || {}).forEach(k => { if (best[k] == null || b.best[k] > best[k]) best[k] = b.best[k]; });
+    return Object.assign({}, a, b, {
+      journeyDone: union(a.journeyDone, b.journeyDone).sort((x, y) => x - y),
+      journeyUnlocked: Math.max(a.journeyUnlocked || 0, b.journeyUnlocked || 0),
+      tutorialDone: !!(a.tutorialDone || b.tutorialDone),
+      daysPlayed: union(a.daysPlayed, b.daysPlayed),
+      wins: Math.max(a.wins || 0, b.wins || 0),
+      streak: Math.max(a.streak || 0, b.streak || 0),
+      best
+    });
+  }
+
+  return { create, mergeProgress, PREF_KEYS, DEFAULT_BINDINGS };
 });

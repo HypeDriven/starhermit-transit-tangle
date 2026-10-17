@@ -32,6 +32,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { launchToken, stubStarHermit } from './starhermit-e2e.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOT = (stage, vp) => `/tmp/transit-tangle-e2e-${stage}-${vp}.png`;
@@ -435,6 +436,79 @@ async function runPass(browser, name, ctxOpts, { full }) {
   ok(`${name}: no page errors`);
 }
 
+// ---------- language + report pass (signed in, stubbed StarHermit API) ----------
+// Automatic follows the account's preferred language (fr-CA); choosing another
+// language in Settings re-renders visible text live and PUTs ui.language;
+// Report a problem posts to /reports; a German round shows German HUD text;
+// switching back to Automatic from the pause menu re-renders it mid-round.
+async function languagePass(browser, name, ctxOpts) {
+  const errors = [];
+  const context = await browser.newContext(ctxOpts);
+  const page = await context.newPage();
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if (!['error', 'warning'].includes(m.type()) || browserNoise.test(m.text())) return;
+    errors.push(`console: ${m.text()}`);
+  });
+  try {
+    const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+    await page.goto('about:blank');
+    await page.goto(BASE + '/index.html#game_token=' + launchToken(), { waitUntil: 'load' });
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA', null, { timeout: 20000 });
+    await overlayVisible(page, 'screen-title');
+    if ((await page.textContent('#btn-play')).trim() !== 'Jouer') throw new Error('title not in fr-CA');
+    await page.click('#btn-settings2');
+    await overlayVisible(page, 'screen-settings');
+    const choice = page.locator('#screen-settings [data-game-language="choice"]');
+    await choice.scrollIntoViewIfNeeded();
+    const auto = await choice.locator('option').first().textContent();
+    if (auto !== 'Automatique — Français (Canada)') throw new Error(`Automatic label not resolved: "${auto}"`);
+    await choice.selectOption('it-IT');
+    await page.waitForFunction(() => document.documentElement.lang === 'it-IT');
+    await page.waitForFunction(() => /Salvato/.test(document.querySelector('[data-game-language="status"]').textContent));
+    if (calls.settings['ui.language']?.choice !== 'it-IT') throw new Error('ui.language not saved: ' + JSON.stringify(calls.settings));
+    if ((await page.textContent('#settings-h')).trim() !== 'Impostazioni') throw new Error('settings title not re-rendered');
+    if ((await page.textContent('label[for="set-music"]')).trim() !== 'Volume musica') throw new Error('settings labels not re-rendered');
+    if ((await page.textContent('#gfx-heading')).trim() !== 'Grafica') throw new Error('graphics labels not re-rendered');
+    await page.locator('[data-game-report="title"]').scrollIntoViewIfNeeded();
+    await page.fill('[data-game-report="title"]', 'Test report');
+    await page.click('[data-game-report="send"]');
+    await page.waitForFunction(() => /Grazie/.test(document.querySelector('[data-game-report="status"]').textContent));
+    if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error('report not posted');
+    ok(`${name}: Automatic resolved fr-CA from the account; Italian applied live, saved to ui.language; report posted`);
+
+    await choice.selectOption('de-DE');
+    await page.waitForFunction(() => document.documentElement.lang === 'de-DE');
+    await page.locator('#btn-settings-close').scrollIntoViewIfNeeded();
+    await page.click('#btn-settings-close');
+    await overlayVisible(page, 'screen-title');
+    await startPractice(page);
+    if ((await page.textContent('#hud-objective')).trim() !== 'Alle Schlangen abräumen') throw new Error('HUD not German');
+    await page.screenshot({ path: SHOT('language-de', name) });
+    await page.click('#btn-pause');
+    await overlayVisible(page, 'screen-pause');
+    await page.click('#btn-pause-settings');
+    await overlayVisible(page, 'screen-settings');
+    await choice.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: SHOT('language-de-settings', name) });
+    await choice.selectOption('auto');
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+    if ((await page.textContent('#settings-h')).trim() !== 'Paramètres') throw new Error('settings not re-rendered in French');
+    await page.locator('#btn-settings-close').scrollIntoViewIfNeeded();
+    await page.click('#btn-settings-close');
+    await overlayVisible(page, 'screen-pause');
+    if ((await page.textContent('#pause-h')).trim() !== 'En pause') throw new Error('pause screen not French');
+    await page.click('#btn-resume');
+    await overlayGone(page, 'screen-pause');
+    if ((await page.textContent('#hud-objective')).trim() !== 'Vider toutes les files') throw new Error('HUD not re-rendered in French');
+    if (!/^entraînement/.test((await page.textContent('#hud-mode')).trim())) throw new Error('HUD mode not re-rendered in French');
+    ok(`${name}: German round HUD, then Automatic (fr-CA) re-rendered settings, pause and HUD mid-round`);
+  } finally {
+    await context.close();
+  }
+  if (errors.length) throw new Error(`${name} language pass had page errors:\n  ${errors.join('\n  ')}`);
+}
+
 // ---------- main ----------
 let browser = null;
 try {
@@ -446,6 +520,8 @@ try {
   await runPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { full: true });
   await runPass(browser, 'mobile',
     { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, { full: false });
+  await languagePass(browser, 'desktop-language', { viewport: { width: 1280, height: 800 } });
+  await languagePass(browser, 'mobile-language', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   console.log('\nE2E PASS — transit-tangle, desktop + mobile, no page errors');
 } catch (e) {
   failures++;

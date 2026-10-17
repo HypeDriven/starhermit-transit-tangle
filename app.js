@@ -6,6 +6,9 @@
 (function () {
   const R = window.TTRules;
   const $ = id => document.getElementById(id);
+  // Localized strings (strings.js via i18n.js); the language follows sh-language.js.
+  const I18N = window.TTI18n;
+  const T = (k, vars) => (I18N ? I18N.t(k, vars) : k);
 
   /* ============================== store ============================== */
   const LS_KEY = 'transit-tangle-v1';
@@ -48,7 +51,13 @@
   /* ============================== net (platform adapter) ============================== */
   // platform.js wraps window.StarHermit; this glue binds it to the store and DOM.
   const SH = window.StarHermit || null;
-  const ST = (k, vars) => (window.TTSh ? window.TTSh.shText(k, vars) : k);
+  const ST = (k, vars) => (window.TTSh ? window.TTSh.shText(k, vars || {}, I18N ? I18N.locale() : undefined) : k);
+  /** Built-in fallback names ('guest', 'Player <id>') follow the game language. */
+  function nameText(n) {
+    const m = /^Player(?: (\S+))?$/.exec(String(n || ''));
+    if (m) return m[1] ? T('playerN', { id: m[1] }) : T('player');
+    return n === 'guest' ? T('guest') : n;
+  }
   const P = window.TTPlatform.create({ sh: SH });
   const net = P.net;
   const displayName = () => P.displayName();
@@ -64,11 +73,8 @@
     if (!el) return;
     if (!net.hosted) { el.hidden = true; return; }
     el.hidden = false;
-    const syncTxt = {
-      saving: 'saving…', synced: 'synced',
-      offline: 'offline — will sync when you play'
-    }[net.syncState] || net.syncState;
-    el.textContent = 'Playing as ' + (net.nickname || '…') + ' · progress ' + syncTxt;
+    const syncKey = { saving: 'syncSaving', synced: 'syncSynced', offline: 'syncOffline' }[net.syncState];
+    el.textContent = T('accountLine', { name: net.nickname ? nameText(net.nickname) : '…', sync: syncKey ? T(syncKey) : net.syncState });
   }
   function storeDoc() {
     return {
@@ -76,13 +82,22 @@
       achievements: store.achievements, savedAt: Date.now()
     };
   }
-  function applyStoreDoc(doc) {
+  /**
+   * Merge a cloud doc into the store: progress keeps the best of both devices
+   * (TTPlatform.mergeProgress), achievements are united. preferLocalSettings
+   * keeps this device's settings (after a save conflict); otherwise the cloud
+   * settings win (boot).
+   */
+  function applyStoreDoc(doc, preferLocalSettings) {
     if (!doc || typeof doc !== 'object') return false;
-    // conflict resolution prefers the remote copy field-by-field
-    store.settings = Object.assign({}, defaults.settings, store.settings, doc.settings);
+    store.settings = preferLocalSettings
+      ? Object.assign({}, defaults.settings, doc.settings, store.settings)
+      : Object.assign({}, defaults.settings, store.settings, doc.settings);
     migrateSettings(store.settings);
-    store.progress = Object.assign({}, defaults.progress, store.progress, doc.progress);
-    if (Array.isArray(doc.achievements)) store.achievements = doc.achievements.slice();
+    store.progress = Object.assign({}, defaults.progress, window.TTPlatform.mergeProgress(doc.progress, store.progress));
+    if (Array.isArray(doc.achievements)) {
+      store.achievements = store.achievements.concat(doc.achievements.filter(k => !store.achievements.includes(k)));
+    }
     return true;
   }
   function queueCloudSave() {
@@ -103,6 +118,15 @@
     P.on('auth', a => {
       if (!a.signedIn) { net.nickname = null; toast(ST('signedOut'), 4000); }
       updateAccountLine();
+    });
+    // Another device saved since our last load: reload the cloud doc, merge it
+    // (best of both, this device's settings and round), adopt it and save again.
+    P.on('saveconflict', () => {
+      P.loadCloudSave().then(doc => {
+        applyStoreDoc(doc, true);
+        saveStore();
+        ui.updateTitle();
+      }).catch(() => {});
     });
     if (!net.hosted) { updateAccountLine(); return Promise.resolve(); }
     // Remote save first, then the settings KV on top (platform preferences
@@ -218,7 +242,7 @@
     // event map
     select() {
       if (!audio.playSample(audio.sampleFor('select'))) audio.blip(520, 0.08, 'square', 0.25);
-      caption('select');
+      caption(T('capSelect'));
     },
     dispatch(boards, full) {
       const event = full ? 'dispatch:full' : boards > 0 ? 'dispatch:boarded' : 'dispatch';
@@ -227,23 +251,23 @@
         if (boards > 0) audio.chord([440, 554, 659].slice(0, Math.min(3, boards)), 0.15, 0.3);
         if (full) audio.chord([523, 659, 784], 0.25, 0.35);
       }
-      caption(boards > 0 ? 'boarded ' + boards : 'dispatch');
+      caption(boards > 0 ? T('capBoarded', { n: boards }) : T('capDispatch'));
     },
     mismatch() {
       if (!audio.playSample(audio.sampleFor('mismatch'))) audio.blip(180, 0.25, 'sawtooth', 0.3);
-      caption('mismatch — passenger waits');
+      caption(T('capMismatch'));
     },
     invalid() {
       if (!audio.playSample(audio.sampleFor('invalid'))) audio.blip(140, 0.15, 'square', 0.2);
-      caption('not allowed');
+      caption(T('capInvalid'));
     },
     win() {
       if (!audio.playSample(audio.sampleFor('win'))) audio.chord([523, 659, 784, 1047], 0.5, 0.4);
-      caption('round complete');
+      caption(T('capWin'));
     },
     lose() {
       if (!audio.playSample(audio.sampleFor('lose'))) audio.chord([330, 262, 196], 0.5, 0.35);
-      caption('round lost');
+      caption(T('capLose'));
     }
   };
   function caption(text) {
@@ -260,7 +284,9 @@
     cvd: [0xe69f00, 0x56b4e9, 0xd55e00, 0x009e73, 0xcc79a7],
     contrast: [0xffb000, 0x0055ff, 0xff2222, 0x008844, 0x8800cc]
   };
-  const COLOR_NAMES = ['amber', 'blue', 'coral', 'green', 'violet'];
+  // Color names in the game language (index = color - 1).
+  const COLOR_KEYS = ['colorAmber', 'colorBlue', 'colorCoral', 'colorGreen', 'colorViolet'];
+  const COLOR_NAMES = new Proxy([], { get: (_, i) => (/^\d+$/.test(String(i)) ? T(COLOR_KEYS[i]) : undefined) });
   const THEMES = {
     plaza: { ground: 0xf2f5f7, sky: 0xdfeaf5, accent: 0x8fb8d8 },
     garden: { ground: 0xe6f2e2, sky: 0xe3f0e6, accent: 0x7fbf8a },
@@ -283,7 +309,7 @@
 
   /* ---- graphics quality (model in gfx.js, helpers in gfx-render.js via window.TTGfx) ---- */
   const GFX = window.TTGfx;
-  const GS = GFX.gfxStrings(navigator.language);
+  let GS = GFX.gfxStrings(I18N ? I18N.locale() : navigator.language);
   const gfx = {
     gpu: '', detected: 'balanced', q: null, composer: null, postKey: null, postFailed: false,
     adaptiveScale: 1, frames: [], fps: 0, size: [0, 0], ratio: 1, envTex: null, time: 0,
@@ -914,7 +940,7 @@
     if (store.settings.reducedMotion) { el.hidden = true; cb(); return; }
     let n = 3;
     el.hidden = false; el.textContent = n;
-    announce('Get ready');
+    announce(T('getReady'));
     clearInterval(countdownTimer);
     countdownTimer = setInterval(() => {
       n--;
@@ -932,7 +958,7 @@
     if (!r.ok) {
       audio.invalid(); haptic(30);
       toast(invalidReasonText(r.reason), 1600);
-      announce('Not allowed: ' + invalidReasonText(r.reason));
+      announce(T('notAllowed', { reason: invalidReasonText(r.reason) }));
       ui.updateHUD();
       return;
     }
@@ -953,16 +979,17 @@
   }
 
   function invalidReasonText(reason) {
-    return {
-      'no-such-vehicle': 'no such vehicle', 'not-active': 'round is not active',
-      'no-such-queue': 'no such queue', 'vehicle-depleted': 'that vehicle type is used up',
-      'queue-empty': 'that queue is already empty'
-    }[reason] || reason;
+    const key = {
+      'no-such-vehicle': 'rsnNoVehicle', 'not-active': 'rsnNotActive',
+      'no-such-queue': 'rsnNoQueue', 'vehicle-depleted': 'rsnDepleted',
+      'queue-empty': 'rsnQueueEmpty'
+    }[reason];
+    return key ? T(key) : reason;
   }
 
   function undo() {
     if (!session.undoAllowed || session.screen !== 'active' || !session.undoStack.length) {
-      toast(session.undoAllowed ? 'Nothing to undo' : 'Undo is not available in this ranked mode', 1400);
+      toast(T(session.undoAllowed ? 'nothingToUndo' : 'undoRanked'), 1400);
       return;
     }
     session.state = session.undoStack.pop();
@@ -972,20 +999,19 @@
     audio.select();
     rebuildBoard();
     ui.updateAll();
-    announce('Undone. ' + describeBoard(session.state));
+    announce(T('undone', { board: describeBoard(session.state) }));
   }
 
   function doHint() {
     if (session.screen !== 'active' || !session.state) return;
     const h = R.hint(session.state);
-    if (!h) { toast('No hint available', 1200); return; }
+    if (!h) { toast(T('noHint'), 1200); return; }
     session.usedAssist = true;
     const veh = session.state.v[h.v];
     const lane = session.state.q[h.q];
-    const msg = 'Try the ' + COLOR_NAMES[veh.c - 1] + ' vehicle on queue ' + (h.q + 1) +
-      (lane[0] === veh.c ? ' — colors match' : ' — it will move a passenger to holding');
+    const msg = T(lane[0] === veh.c ? 'hintMatch' : 'hintMismatch', { color: COLOR_NAMES[veh.c - 1], n: h.q + 1 });
     toast(msg, 3200);
-    announce('Hint: ' + msg);
+    announce(T('hintAnnounce', { msg }));
     audio.select();
   }
 
@@ -1007,22 +1033,22 @@
     if (won) {
       store.progress.wins++;
       store.progress.streak++;
-      award('first_completion', 'First completion');
-      if (store.progress.streak >= 3) award('streak_3', 'Three-round streak');
-      if (store.progress.daysPlayed.length >= 7) award('regular_commuter', 'Played on 7 different days');
+      award('first_completion', 'achFirst');
+      if (store.progress.streak >= 3) award('streak_3', 'achStreak3');
+      if (store.progress.daysPlayed.length >= 7) award('regular_commuter', 'achRegular');
       if (session.mode === 'journey') {
         if (!store.progress.journeyDone.includes(session.stage)) store.progress.journeyDone.push(session.stage);
         if (session.stage >= store.progress.journeyUnlocked && session.stage < R.JOURNEY_STAGES - 1) {
           store.progress.journeyUnlocked = session.stage + 1;
         }
-        if (session.stage >= 19) award('mechanic_mastery', 'Mechanic mastery (stage 20)');
-        if (session.stage >= 35) award('milestone_hard', 'Difficult content milestone');
+        if (session.stage >= 19) award('mechanic_mastery', 'achMastery');
+        if (session.stage >= 35) award('milestone_hard', 'achMilestone');
       }
     } else {
       store.progress.streak = 0;
     }
     if (session.mode === 'learn') {
-      if (session.lesson >= 2) { store.progress.tutorialDone = true; award('tutorial_done', 'Tutorial complete'); }
+      if (session.lesson >= 2) { store.progress.tutorialDone = true; award('tutorial_done', 'achTutorial'); }
     }
     if (won && session.ranked) {
       store.progress.best = store.progress.best || {};
@@ -1034,38 +1060,31 @@
     // finished ranked round also posts its total (score-script.js).
     let submitted = null, lbPost = null;
     if (session.ranked && net.hosted) {
-      submitted = Promise.resolve('Signed in as ' + displayName() + ' — personal best saved to your profile.');
+      submitted = { key: 'signedInBest', vars: { name: nameText(displayName()) } };
       lbPost = P.submitScore(Math.max(0, sc.total)); // the board's floor is 0
     } else if (session.ranked) {
-      submitted = Promise.resolve('Score kept in your local records.');
+      submitted = { key: 'localRecords' };
     }
     ui.showResults(sc, won, newAch, submitted, lbPost);
     setScreen('results');
   }
 
   /* ============================== tutorial coach ============================== */
-  const LESSONS = [
-    ['Watch a queue’s front passenger. Select a vehicle of the same color, then tap that queue.',
-     'Matched passengers board. Clear every passenger to win.'],
-    ['Two colors now. Only dispatch when the front passenger matches — a mismatch sends them to the holding lane.',
-     'A matched vehicle with spare seats also picks up waiting holding passengers.'],
-    ['The holding lane is small. Plan dispatches so waiting passengers get collected before it overflows.',
-     'Finish the level to complete your training.']
-  ];
+  const LESSONS = [['lesson1a', 'lesson1b'], ['lesson2a', 'lesson2b'], ['lesson3a', 'lesson3b']];
   let coachStep = 0;
   function coachForLesson(lesson, step) {
     coachStep = step;
     const el = $('coach');
-    const text = 'Lesson ' + (lesson + 1) + ': ' + LESSONS[lesson][Math.min(step, 1)];
+    const text = T('lessonLine', { n: lesson + 1, text: T(LESSONS[lesson][Math.min(step, 1)]) });
     el.textContent = '';
     const span = document.createElement('span'); span.className = 'coach-text'; span.textContent = text;
     // the coach can be tucked away so it never hides a vehicle; the chip
     // brings the text back
     const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'btn small secondary coach-toggle';
-    btn.textContent = 'Hide'; btn.setAttribute('aria-expanded', 'true');
+    btn.textContent = T('hide'); btn.setAttribute('aria-expanded', 'true');
     btn.addEventListener('click', () => {
       const c = el.classList.toggle('collapsed');
-      btn.textContent = c ? 'Show lesson' : 'Hide';
+      btn.textContent = c ? T('showLesson') : T('hide');
       btn.setAttribute('aria-expanded', String(!c));
     });
     el.append(span, btn);
@@ -1090,8 +1109,8 @@
   }
   function describeBoard(s) {
     const parts = s.q.map((l, i) =>
-      'queue ' + (i + 1) + ': ' + (l.length ? l.map(c => COLOR_NAMES[c - 1]).join(', ') : 'empty'));
-    parts.unshift('holding lane ' + s.h.length + ' of ' + s.holdingCap +
+      T('queueDesc', { n: i + 1, list: l.length ? l.map(c => COLOR_NAMES[c - 1]).join(', ') : T('empty') }));
+    parts.unshift(T('holdingDesc', { n: s.h.length, cap: s.holdingCap }) +
       (s.h.length ? ' (' + s.h.map(c => COLOR_NAMES[c - 1]).join(', ') + ')' : ''));
     return parts.join('. ');
   }
@@ -1099,14 +1118,14 @@
     let msg;
     if (ev.match) {
       const nb = ev.boarded.length;
-      msg = 'Boarded ' + nb + ' passenger' + (nb === 1 ? '' : 's') +
-        (ev.full ? ', vehicle full' : '') +
-        (ev.fromHolding ? ', ' + ev.fromHolding + ' collected from holding' : '') + '.';
+      msg = T(nb === 1 ? 'boardedOne' : 'boardedMany', { n: nb }) +
+        (ev.full ? T('vehicleFull') : '') +
+        (ev.fromHolding ? T('fromHolding', { n: ev.fromHolding }) : '') + '.';
     } else {
-      msg = 'Mismatch — a ' + COLOR_NAMES[ev.displaced[0].color - 1] + ' passenger waits in the holding lane (' + s.h.length + ' of ' + s.holdingCap + ').';
+      msg = T('mismatchMsg', { color: COLOR_NAMES[ev.displaced[0].color - 1], n: s.h.length, cap: s.holdingCap });
     }
-    if (s.h.length >= s.holdingCap - 1 && s.status === 'active') msg += ' Holding lane nearly full!';
-    announce(msg + ' ' + (s.q.reduce((a, l) => a + l.length, 0) + s.h.length) + ' passengers remain.');
+    if (s.h.length >= s.holdingCap - 1 && s.status === 'active') msg += T('nearlyFull');
+    announce(T('passengersRemain', { msg, n: s.q.reduce((a, l) => a + l.length, 0) + s.h.length }));
   }
 
   /* ============================== UI ============================== */
@@ -1138,89 +1157,106 @@
     updateAll() { ui.updateHUD(); ui.updateRails(); ui.updateMirror(); ui.updateTitle(); },
     updateHUD() {
       const s = session.state;
-      $('hud-mode').textContent = session.mode ? session.mode + (session.mode === 'journey' ? ' ' + (session.stage + 1) : '') : '—';
+      $('hud-mode').textContent = session.mode ? T('mode' + session.mode[0].toUpperCase() + session.mode.slice(1)) + (session.mode === 'journey' ? ' ' + (session.stage + 1) : '') : '—';
       $('hud-score').textContent = s ? String(R.scoreComponents(s).total) : '0';
       $('hud-moves').textContent = s ? String(s.dispatches) : '0';
       $('hud-limit').textContent = s && s.moveLimit ? ' / ' + s.moveLimit : '';
       $('hud-holding').textContent = s ? s.h.length + '/' + s.holdingCap : '0/0';
       $('hud-holding').parentElement.classList.toggle('danger', !!s && s.h.length >= s.holdingCap - 1 && s.status === 'active');
       $('hud-left').textContent = s ? String(s.q.reduce((a, l) => a + l.length, 0) + s.h.length) : '0';
-      $('hud-objective').textContent = s && s.moveLimit ? 'Clear all within ' + s.moveLimit + ' moves' : 'Clear every queue';
+      $('hud-objective').textContent = s && s.moveLimit ? T('objectiveLimit', { n: s.moveLimit }) : T('objectiveClear');
     },
     updateRails() {
       const s = session.state;
       if (!s) return;
-      $('progress-text').textContent =
-        s.boarded + ' boarded · ' + (s.q.reduce((a, l) => a + l.length, 0) + s.h.length) + ' remaining · ' +
-        s.invalid + ' invalid';
-      $('par-text').textContent = 'Par ' + (s.par || '—') + (s.moveLimit ? ' · limit ' + s.moveLimit : '');
-      $('round-text').textContent = (session.cfg ? session.cfg.id : '') + ' · seed ' + (s.seed >>> 0).toString(16) +
-        (session.ranked ? ' · ranked' : ' · unranked');
+      $('progress-text').textContent = T('progressLine', {
+        boarded: s.boarded, remaining: s.q.reduce((a, l) => a + l.length, 0) + s.h.length, invalid: s.invalid
+      });
+      $('par-text').textContent = T('parLine', { par: s.par || '—' }) + (s.moveLimit ? T('parLimit', { n: s.moveLimit }) : '');
+      $('round-text').textContent = T('roundLine', { id: session.cfg ? session.cfg.id : '', seed: (s.seed >>> 0).toString(16) }) +
+        T(session.ranked ? 'rankedTag' : 'unrankedTag');
       $('btn-undo').disabled = $('btn-undo2').disabled = !session.undoAllowed || !session.undoStack.length;
     },
     updateMirror() {
       const s = session.state;
-      if (!s) { $('mirror-content').textContent = 'No active round.'; return; }
-      $('mirror-content').textContent = describeBoard(s) + '. Vehicles: ' +
-        s.v.map(v => COLOR_NAMES[v.c - 1] + ' x' + v.n + ' (seats ' + v.cap + ')').join(', ') + '.';
+      if (!s) { $('mirror-content').textContent = T('noRound'); return; }
+      $('mirror-content').textContent = describeBoard(s) + T('vehiclesDesc', {
+        list: s.v.map(v => T('vehicleItem', { color: COLOR_NAMES[v.c - 1], n: v.n, cap: v.cap })).join(', ')
+      });
     },
     updateTitle() {
       $('title-progress').textContent =
-        'Journey: ' + store.progress.journeyDone.length + '/' + R.JOURNEY_STAGES + ' stages · wins ' + store.progress.wins +
-        (store.progress.streak >= 2 ? ' · streak ' + store.progress.streak : '');
+        T('titleProgress', { done: store.progress.journeyDone.length, total: R.JOURNEY_STAGES, wins: store.progress.wins }) +
+        (store.progress.streak >= 2 ? T('streakTag', { n: store.progress.streak }) : '');
     },
+    /** Results (re-rendered in place on a language change; the leaderboard post happens once). */
     showResults(sc, won, newAch, submitted, lbPost) {
-      $('results-h').textContent = won ? 'All passengers away!' : 'Round lost';
-      $('results-reason').textContent = {
-        'all-passengers-boarded': 'Every queue cleared — nice dispatching.',
-        'holding-overflow': 'The holding lane overflowed. Dispatch matches to collect waiting passengers sooner.',
-        'move-limit': 'Move limit reached. Plan dispatches that board more per move.',
-        'no-legal-dispatch': 'No vehicles remain that can act.'
-      }[session.state.reason] || session.state.reason;
-      const rows = [
-        ['Passengers boarded', '+' + sc.board],
-        ['Full-vehicle bonuses', '+' + sc.full],
-        ['Spare vehicles kept', '+' + sc.spare],
-        ['Invalid actions', '-' + sc.invalidPenalty],
-        ['Holding-lane congestion', '-' + sc.holdingPenalty],
-        ['Total', String(sc.total)]
-      ];
-      $('results-table').innerHTML = rows.map((r, i) =>
-        '<tr' + (i === rows.length - 1 ? ' class="total"' : '') + '><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('');
-      $('results-progress').textContent = won
-        ? (session.mode === 'journey' ? 'Stage ' + (session.stage + 1) + ' complete. ' : '') +
-          (session.usedAssist ? 'Assists used (undo/hint) — not eligible for ties.' : '')
-        : 'Tip: spare seats on a matched vehicle rescue holding passengers.';
-      $('results-achievements').textContent = newAch.length ? 'Achievement unlocked: ' + newAch.join(', ') : '';
-      if (submitted) submitted.then(t => { $('results-achievements').textContent += ($('results-achievements').textContent ? ' ' : '') + t; });
       const lb = $('results-lb'), seq = lb.dataset.seq = String(+(lb.dataset.seq || 0) + 1);
-      lb.hidden = !lbPost;
+      const res = ui.lastResults = { sc, won, newAch, submitted, lb: lbPost ? { key: 'lbPosting' } : null, reason: session.state.reason,
+        mode: session.mode, stage: session.stage, lesson: session.lesson, usedAssist: session.usedAssist };
       if (lbPost) {
-        lb.textContent = ST('lbPosting');
         lbPost.then(r => {
           if (lb.dataset.seq !== seq) return; // a newer round's results are showing
-          lb.textContent = !r.posted ? ST('lbNotPosted') : r.rank ? ST('lbRank', { rank: r.rank }) : ST('lbPosted');
+          res.lb = !r.posted ? { key: 'lbNotPosted' } : r.rank ? { key: 'lbRank', vars: { rank: r.rank } } : { key: 'lbPosted' };
+          lb.textContent = ST(res.lb.key, res.lb.vars);
         });
       }
-      $('btn-results-next').textContent = won && session.mode === 'journey' && session.stage < R.JOURNEY_STAGES - 1 ? 'Next stage'
-        : won && session.mode === 'learn' && session.lesson < 2 ? 'Next lesson' : 'Play again';
-      announce($('results-h').textContent + '. ' + $('results-reason').textContent + ' Total score ' + sc.total + '.');
+      ui.renderResults(res);
+      announce($('results-h').textContent + '. ' + $('results-reason').textContent + ' ' + T('total') + ' ' + sc.total + '.');
       funnel('results-shown');
     },
-    buildHelp() {
-      const cards = [
-        ['Match fronts', 'Select a vehicle, then a queue whose front passenger shares its color. Consecutive matching passengers board up to the vehicle’s seats.'],
-        ['Holding lane', 'A mismatched front passenger steps aside into the holding lane. If it overfills, you lose. Matched vehicles with spare seats collect waiting passengers.'],
-        ['Vehicles are limited', 'Each vehicle type has a fixed count, shown as pips. Keep spares for the endgame.'],
-        ['Scoring', 'Points for boarded passengers, full vehicles, and unused vehicles; penalties for invalid actions and holding congestion.']
+    renderResults(res) {
+      const { sc, won, newAch, submitted } = res;
+      $('results-h').textContent = won ? T('allAway') : T('roundLost');
+      const reasonKey = {
+        'all-passengers-boarded': 'endBoarded', 'holding-overflow': 'endOverflow',
+        'move-limit': 'endMoveLimit', 'no-legal-dispatch': 'endNoLegal'
+      }[res.reason];
+      $('results-reason').textContent = reasonKey ? T(reasonKey) : res.reason;
+      const rows = [
+        [T('rowBoarded'), '+' + sc.board],
+        [T('rowFull'), '+' + sc.full],
+        [T('rowSpare'), '+' + sc.spare],
+        [T('rowInvalid'), '-' + sc.invalidPenalty],
+        [T('rowHolding'), '-' + sc.holdingPenalty],
+        [T('total'), String(sc.total)]
       ];
-      $('help-cards').innerHTML = cards.map(c => '<h3>' + c[0] + '</h3><p>' + c[1] + '</p>').join('');
+      const table = $('results-table');
+      const tbody = document.createElement('tbody');
+      rows.forEach((r, i) => {
+        const tr = document.createElement('tr');
+        if (i === rows.length - 1) tr.className = 'total';
+        for (const cell of r) { const td = document.createElement('td'); td.textContent = cell; tr.append(td); }
+        tbody.append(tr);
+      });
+      table.replaceChildren(tbody);
+      $('results-progress').textContent = won
+        ? (res.mode === 'journey' ? T('stageComplete', { n: res.stage + 1 }) : '') +
+          (res.usedAssist ? T('assistsUsed') : '')
+        : T('tipSpare');
+      const ach = newAch.length ? T('achievementUnlocked', { list: newAch.map(k => T(k)).join(', ') }) : '';
+      const sub = submitted ? T(submitted.key, submitted.vars) : '';
+      $('results-achievements').textContent = [ach, sub].filter(Boolean).join(' ');
+      const lb = $('results-lb');
+      lb.hidden = !res.lb;
+      if (res.lb) lb.textContent = ST(res.lb.key, res.lb.vars);
+      $('btn-results-next').textContent = T(won && res.mode === 'journey' && res.stage < R.JOURNEY_STAGES - 1 ? 'nextStage'
+        : won && res.mode === 'learn' && res.lesson < 2 ? 'nextLesson' : 'playAgain');
+    },
+    buildHelp() {
+      const host = $('help-cards');
+      host.textContent = '';
+      for (const k of ['helpMatch', 'helpHolding', 'helpLimited', 'helpScoring']) {
+        const h = document.createElement('h3'); h.textContent = T(k);
+        const p = document.createElement('p'); p.textContent = T(k + 'Text');
+        host.append(h, p);
+      }
       const lbl = c => (/^Key[A-Z]$/.test(c) ? c.slice(3) : ({ Escape: 'Esc', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' }[c] || c));
       const k = a => (bindings[a] || []).map(lbl).join('/') || '—';
-      $('help-controls').textContent =
-        'Pointer/touch: tap a vehicle, then a queue. Keyboard: ' + k('prev') + ' / ' + k('next') + ' choose, ' + k('confirm') +
-        ' select and dispatch, ' + k('cancel') + ' cancel or pause, ' + k('undo') + ' undo, ' + k('hint') + ' hint, ' +
-        k('camera') + ' reset camera, ' + k('pause') + ' pause. Gamepad: stick or D-pad choose, A confirm, B cancel, Start pause.';
+      $('help-controls').textContent = T('helpControls', {
+        prev: k('prev'), next: k('next'), confirm: k('confirm'), cancel: k('cancel'), undo: k('undo'),
+        hint: k('hint'), camera: k('camera'), pause: k('pause')
+      });
     },
     buildStageGrid() {
       const grid = $('stage-grid');
@@ -1233,46 +1269,48 @@
         const locked = i > store.progress.journeyUnlocked;
         b.className = done ? 'done' : locked ? 'locked' : (i === store.progress.journeyUnlocked ? 'current' : '');
         b.disabled = locked;
-        b.setAttribute('aria-label', 'Stage ' + (i + 1) + (done ? ' completed' : locked ? ' locked' : ''));
+        b.setAttribute('aria-label', T('stageLabel', { n: i + 1 }) + (done ? T('completedTag') : locked ? T('lockedTag') : ''));
         b.addEventListener('click', () => startRound('journey', { stage: i }));
         grid.appendChild(b);
       }
     },
     showLocalBests(el) {
       const best = (store.progress && store.progress.best) || {};
-      const rows = [['Journey', best.journey], ['Challenge', best.challenge], ['Daily', best.daily]]
+      const rows = [[T('journey'), best.journey], [T('challenge'), best.challenge], [T('dailyShort'), best.daily]]
         .filter(r => r[1] != null);
-      if (!rows.length) { el.textContent = 'No local records yet.'; return; }
-      el.innerHTML = '<table class="scores-table"><tr><th>Board</th><th>Your best</th></tr>' +
+      if (!rows.length) { el.textContent = T('noRecords'); return; }
+      el.innerHTML = '<table class="scores-table"><tr><th>' + T('boardCol') + '</th><th>' + T('yourBest') + '</th></tr>' +
         rows.map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('') + '</table>';
     },
     async showPlatformScores(el) {
       if (!net.hosted) { ui.showLocalBests(el); return; }
-      el.textContent = 'Loading…';
+      el.textContent = T('loading');
       try {
         const j = await loadPlatformBoard();
         if (!j) { ui.showLocalBests(el); return; } // no leaderboardId: local records only
         const list = Array.isArray(j.entries) ? j.entries : (Array.isArray(j) ? j : []);
-        if (!list.length) { el.textContent = 'No entries yet — be the first.'; return; }
+        if (!list.length) { el.textContent = T('noEntries'); return; }
         const names = await Promise.all(list.map(e => profileNickname(e.userId != null ? e.userId : e.user_id)));
-        el.innerHTML = '<table class="scores-table"><tr><th>#</th><th>Player</th><th>Score</th></tr>' +
+        el.innerHTML = '<table class="scores-table"><tr><th>#</th><th>' + T('player') + '</th><th>' + T('scoreCol') + '</th></tr>' +
           list.map((e, i) => '<tr><td>' + (i + 1) + '</td><td></td><td>' +
             (e.score != null ? e.score : (e.value != null ? e.value : '')) + '</td></tr>').join('') + '</table>';
         // insert names safely (no HTML injection)
         const rows = el.querySelectorAll('tr');
-        names.forEach((n, i) => { if (rows[i + 1]) rows[i + 1].children[1].textContent = n; });
+        names.forEach((n, i) => { if (rows[i + 1]) rows[i + 1].children[1].textContent = nameText(n); });
       } catch (e) {
-        el.textContent = 'Leaderboard unavailable right now. Your local progress is safe.';
+        el.textContent = T('lbUnavailable');
       }
     },
     async showScores(board) {
+      ui.lastBoard = board;
       const el = $('scores-content');
       if (net.hosted) return ui.showPlatformScores(el); // read-only platform board
       // standalone: personal best on this device
       const best = (store.progress.best || {})[board];
+      const boardName = /^daily/.test(board) ? T('dailyShort') : T(board);
       el.textContent = best != null
-        ? 'Your best (' + board + ', this device): ' + best + '. Sign in with StarHermit for online boards.'
-        : 'No ' + board + ' best yet on this device. Sign in with StarHermit for online boards.';
+        ? T('bestOnDevice', { board: boardName, best })
+        : T('noBestOnDevice', { board: boardName });
     }
   };
 
@@ -1313,7 +1351,7 @@
     const host = $('gfx-controls');
     if (!host) return;
     const sec = host.closest('section') || host.parentElement;
-    if (sec) sec.lang = GFX.pickLocale(navigator.language);
+    if (sec) sec.lang = I18N ? I18N.locale() : GFX.pickLocale(navigator.language);
     if ($('gfx-heading')) $('gfx-heading').textContent = GS.graphics;
     if ($('gfx-quality-label')) $('gfx-quality-label').textContent = GS.quality;
     host.textContent = '';
@@ -1482,13 +1520,13 @@
         session.selectedVehicle = -1; rebuildBoard(); audio.select(); return;
       }
       const veh = session.state.v[pick.index];
-      if (!veh || veh.n < 1) { toast('That vehicle type is used up', 1400); audio.invalid(); return; }
+      if (!veh || veh.n < 1) { toast(T('vehicleUsedUp'), 1400); audio.invalid(); return; }
       session.selectedVehicle = pick.index;
       audio.select();
       rebuildBoard();
-      announce(COLOR_NAMES[veh.c - 1] + ' vehicle selected. Green rings board; amber rings displace to holding. Tap a queue.');
+      announce(T('vehicleSelected', { color: COLOR_NAMES[veh.c - 1] }));
     } else if (pick.kind === 'queue') {
-      if (session.selectedVehicle < 0) { toast('Select a vehicle first', 1200); audio.invalid(); return; }
+      if (session.selectedVehicle < 0) { toast(T('selectFirst'), 1200); audio.invalid(); return; }
       commitDispatch(session.selectedVehicle, pick.index);
     }
   }
@@ -1508,7 +1546,7 @@
     if (ev.target && /INPUT|SELECT|TEXTAREA/.test(ev.target.tagName)) return;
     if (isKey('cancel', ev)) {
       if (session.selectedVehicle >= 0 && session.screen === 'active') {
-        session.selectedVehicle = -1; rebuildBoard(); announce('Selection cancelled');
+        session.selectedVehicle = -1; rebuildBoard(); announce(T('selectionCancelled'));
       } else if (session.screen === 'active') pauseGame();
       else if (session.screen === 'paused') resumeGame();
       else if (session.screen === 'help') setScreen(helpReturn);
@@ -1524,8 +1562,8 @@
       const dir = isKey('prev', ev) ? -1 : 1;
       kbFocus.index = (kbFocus.index + dir + t.length) % t.length;
       const idx = t[kbFocus.index];
-      if (session.selectedVehicle >= 0) announce('Queue ' + (idx + 1) + ': ' + (session.state.q[idx].map(c => COLOR_NAMES[c - 1]).join(', ') || 'empty'));
-      else announce('Vehicle ' + (idx + 1) + ': ' + COLOR_NAMES[session.state.v[idx].c - 1] + ', ' + session.state.v[idx].n + ' left');
+      if (session.selectedVehicle >= 0) announce(T('queueAnnounce', { n: idx + 1, list: session.state.q[idx].map(c => COLOR_NAMES[c - 1]).join(', ') || T('empty') }));
+      else announce(T('vehicleAnnounce', { n: idx + 1, color: COLOR_NAMES[session.state.v[idx].c - 1], left: session.state.v[idx].n }));
       ev.preventDefault();
     } else if (isKey('confirm', ev)) {
       const t = kbTargets();
@@ -1566,25 +1604,62 @@
     if (!scene3.ready) return;
     camera.position.copy(scene3.camHome);
     camera.lookAt(0, 0, 0.5);
-    toast('Camera reset', 900);
+    toast(T('cameraReset'), 900);
   }
 
   /* ============================== pause / lifecycle ============================== */
   function pauseGame() {
     if (session.screen !== 'active') return;
     setScreen('paused');
-    announce('Paused');
+    announce(T('announcePaused'));
     funnel('pause');
   }
   function resumeGame() {
     setScreen('active');
-    announce('Resumed. ' + describeBoard(session.state));
+    announce(T('resumed', { board: describeBoard(session.state) }));
   }
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && session.screen === 'active') pauseGame();
   });
 
   /* ============================== wiring ============================== */
+  // Setup card (practice / challenge) texts, re-rendered on a language change.
+  let setupMode = null;
+  function labelSetup() {
+    if (setupMode === 'practice') {
+      $('setup-h').textContent = T('practice');
+      $('setup-desc').textContent = T('practiceDesc');
+      $('setup-meta').textContent = T('practiceMeta');
+    } else if (setupMode === 'challenge') {
+      $('setup-h').textContent = T('challenge');
+      $('setup-desc').textContent = T('challengeDesc');
+      $('setup-meta').textContent = T('challengeMeta', { seed: utcDateInt() });
+    }
+  }
+
+  /**
+   * Language changed (markup already re-applied by i18n.js): re-render
+   * code-built text in place — HUD, rails, mirror, title line, setup card,
+   * help, stage grid, results, scores, coach and the Graphics section — without
+   * touching the round.
+   */
+  function relabel() {
+    $('btn-signin').textContent = ST('signIn');
+    $('btn-invite').textContent = ST('invite');
+    updateAccountLine();
+    GS = GFX.gfxStrings(I18N.locale());
+    buildGfxPanel();
+    syncGfxPanel();
+    ui.updateAll();
+    ui.buildHelp();
+    labelSetup();
+    if (session.screen === 'journey') ui.buildStageGrid();
+    if (session.screen === 'results' && ui.lastResults) ui.renderResults(ui.lastResults);
+    if (session.screen === 'scores' && ui.lastBoard) ui.showScores(ui.lastBoard);
+    if (session.mode === 'learn' && !$('coach').hidden && session.state) coachForLesson(session.lesson, coachStep);
+    tickDailyCountdown();
+  }
+
   function bindUI() {
     $('btn-signin').textContent = ST('signIn');
     $('btn-invite').textContent = ST('invite');
@@ -1600,17 +1675,13 @@
     $('btn-journey').addEventListener('click', () => { ui.buildStageGrid(); setScreen('journey'); });
     $('btn-journey-back').addEventListener('click', () => setScreen('title'));
     $('btn-practice').addEventListener('click', () => {
-      $('setup-h').textContent = 'Practice';
-      $('setup-desc').textContent = 'Unranked. Undo and hints allowed. Pick a difficulty.';
-      $('setup-meta').textContent = 'Expected duration: 2–5 minutes · 1 player · not ranked';
+      setupMode = 'practice'; labelSetup();
       $('setup-difficulty').hidden = false;
       $('btn-setup-start').hidden = true;
       setScreen('setup');
     });
     $('btn-challenge').addEventListener('click', () => {
-      $('setup-h').textContent = 'Challenge';
-      $('setup-desc').textContent = 'A tight layout with a move limit. Ranked on the validated challenge board.';
-      $('setup-meta').textContent = 'Today’s seed: ' + utcDateInt() + ' · expected duration: 2–4 minutes · ranked';
+      setupMode = 'challenge'; labelSetup();
       $('setup-difficulty').hidden = true;
       $('btn-setup-start').hidden = false;
       $('btn-setup-start').onclick = () => { audio.ensure(); startRound('challenge'); };
@@ -1673,7 +1744,7 @@
     next.setUTCHours(24, 0, 0, 0);
     const ms = next.getTime() - now;
     const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s = Math.floor(ms / 1000) % 60;
-    el.textContent = 'Next daily seed in ' + h + 'h ' + m + 'm ' + s + 's (UTC)' + ' · local clock';
+    el.textContent = T('dailyCountdown', { h, m, s });
   }
 
   /* ============================== render loop ============================== */
@@ -1775,6 +1846,7 @@
     platformReady.then(() => {
       bindUI();
       bindSettings();
+      if (I18N) I18N.onLanguage(relabel);
       ui.buildHelp();
       applySettings();
       ui.updateAll();
