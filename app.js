@@ -334,10 +334,34 @@
   function glow(k) { return gfx.q && gfx.q.bloom === 'on' ? k : 1; }
   function detailed() { return !!gfx.q && gfx.q.detail === 'detailed' && !!GFX.RoundedBoxGeometry; }
 
+  // The preset budget's asset variants (gfx.js BUDGETS): shading model, tessellation, bevels, paving size.
+  const lookKey = (q) => [q.budget.material, q.budget.segments, q.budget.bevel, q.budget.texture].join('|');
+  function seg(n, min = 4) { return Math.max(min, Math.round(n * (gfx.q ? gfx.q.budget.segments : 1))); }
+  // Lit materials at the budget's shading model: Lambert on Low, Standard on Balanced, Physical (the
+  // clear-coated toy finish) on High/Ultra where asked for. Parameters a class lacks are dropped.
+  const LIT = { lambert: THREE.MeshLambertMaterial, standard: THREE.MeshStandardMaterial, physical: THREE.MeshPhysicalMaterial };
+  function litMaterial(opts, physical) {
+    const tier = gfx.q ? gfx.q.budget.material : 'standard';
+    const m = new LIT[tier === 'lambert' ? 'lambert' : physical && tier === 'physical' ? 'physical' : 'standard']();
+    for (const [k, v] of Object.entries(opts || {})) {
+      if (!(k in m)) continue;
+      if (m[k] && m[k].isColor) m[k].set(v); else m[k] = v;
+    }
+    return m;
+  }
+
   function computeQuality() {
-    const q = GFX.resolve(savedGfx(), gfx.detected);
+    const prevLook = gfx.q ? lookKey(gfx.q) : null;
+    const q = GFX.resolve(savedGfx(), gfx.detected, gfx.level);
     gfx.q = q;
-    quality.particleCount = GFX.PARTICLES[q.particles];
+    quality.particleCount = q.particles === 'high' ? q.budget.sparks : GFX.SPARKS_LOW;
+    // A new budget swaps materials and geometry: drop the caches; the caller rebuilds the scene.
+    if (prevLook !== null && prevLook !== lookKey(q)) {
+      for (const k of Object.keys(GEO)) { GEO[k].dispose(); delete GEO[k]; }
+      for (const k of Object.keys(MAT)) { MAT[k].dispose(); delete MAT[k]; }
+      for (const k of Object.keys(gfx.paving || {})) { gfx.paving[k].dispose(); delete gfx.paving[k]; }
+      gfx.lookChanged = true;
+    }
     document.body.dataset.gfxPreset = q.preset;
     canvas.dataset.gfxPreset = q.preset;
     fpsVisible(q.showFps);
@@ -425,7 +449,7 @@
       renderer.setPixelRatio(ratio);
       renderer.setSize(w, h, false);
     }
-    const key = q.post ? [q.ao, q.bloom, q.grade, q.antialias, w, h, ratio].join('|') : 'none';
+    const key = q.post ? [q.ao, q.bloom, q.grade, q.antialias, w, h, ratio, q.budget.bloomRes, q.budget.aoRes].join('|') : 'none';
     if (key !== gfx.postKey) { gfx.postKey = key; buildPost(w, h, ratio); }
     if (gfx.composer) {
       try { (globalThis.GameOptions ? globalThis.GameOptions.draw(gfx.composer.renderer, () => gfx.composer.render(dt)) : gfx.composer.render(dt)); return; } catch (e) { gfx.composer.dispose(); gfx.composer = null; gfx.postFailed = true; syncGfxSummary(); }
@@ -436,7 +460,7 @@
   function graphicsInfo() {
     const px = [Math.round(gfx.size[0] * gfx.ratio), Math.round(gfx.size[1] * gfx.ratio)];
     return {
-      gpu: gfx.gpu || GS.unknownGpu, detected: gfx.detected, resolved: gfx.q,
+      gpu: gfx.gpu || GS.unknownGpu, level: gfx.level, detected: gfx.detected, resolved: gfx.q,
       summary: GFX.describe(gfx.q, px, GS.sum), fps: Math.round(gfx.fps || 0),
       adaptiveScale: Math.round(gfx.adaptiveScale * 100) / 100,
       postFailed: !!(gfx.postFailed || (gfx.q.post && !GFX.buildComposer)), post: !!gfx.composer
@@ -452,7 +476,15 @@
       return;
     }
     gfx.gpu = gpuName(renderer);
-    gfx.detected = GFX.detectPreset(gfx.gpu, isTouch);
+    // StarHermit hardware level (gpu-level.js): renderer string + device facts (phone/tablet, cores,
+    // memory, screen); phones and tablets are capped at level 9 (Balanced).
+    let sys = { mobile: isTouch };
+    try {
+      const G = globalThis.StarHermitGpu;
+      if (G) { const d = G.detectSystem(); sys = { ...d, mobile: !!(isTouch || d.mobile), gpu: undefined }; }
+    } catch (e) { /* defaults */ }
+    gfx.level = GFX.detectLevel(gfx.gpu, sys);
+    gfx.detected = GFX.presetForLevel(gfx.level);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
@@ -521,11 +553,11 @@
   function pawnGeo(c) {
     if (!GEO['p' + c]) {
       const shapes = [
-        () => new THREE.SphereGeometry(0.28, 16, 12),
-        () => new THREE.ConeGeometry(0.26, 0.55, 14),
+        () => new THREE.SphereGeometry(0.28, seg(16, 8), seg(12, 6)),
+        () => new THREE.ConeGeometry(0.26, 0.55, seg(14, 6)),
         () => new THREE.BoxGeometry(0.42, 0.42, 0.42),
-        () => new THREE.CapsuleGeometry(0.2, 0.3, 6, 12),
-        () => new THREE.CylinderGeometry(0.2, 0.28, 0.5, 12)
+        () => new THREE.CapsuleGeometry(0.2, 0.3, seg(6, 3), seg(12, 6)),
+        () => new THREE.CylinderGeometry(0.2, 0.28, 0.5, seg(12, 6))
       ];
       GEO['p' + c] = shapes[(c - 1) % 5]();
     }
@@ -533,7 +565,7 @@
   }
   function sharedGeo(key, make) { return GEO[key] || (GEO[key] = make()); }
   function roundedBox(key, w, h, d, r) {
-    return sharedGeo(key, () => (detailed() ? new GFX.RoundedBoxGeometry(w, h, d, 3, r) : new THREE.BoxGeometry(w, h, d)));
+    return sharedGeo(key, () => (detailed() ? new GFX.RoundedBoxGeometry(w, h, d, gfx.q.budget.bevel, r) : new THREE.BoxGeometry(w, h, d)));
   }
   function colorMat(c) {
     const det = detailed();
@@ -541,18 +573,18 @@
     if (!MAT[key]) {
       // detailed: glossy lacquered toy finish (clearcoat picks up the studio reflections)
       MAT[key] = det
-        ? new THREE.MeshPhysicalMaterial({ color: colorOf(c), roughness: 0.42, metalness: 0, clearcoat: 0.45, clearcoatRoughness: 0.25 })
-        : new THREE.MeshStandardMaterial({ color: colorOf(c), roughness: 0.55, metalness: 0.05 });
+        ? litMaterial({ color: colorOf(c), roughness: 0.42, metalness: 0, clearcoat: 0.45, clearcoatRoughness: 0.25 }, true)
+        : litMaterial({ color: colorOf(c), roughness: 0.55, metalness: 0.05 });
     }
     return MAT[key];
   }
   function plainMat(color, opts) {
     const key = 'm' + color + JSON.stringify(opts || '');
-    if (!MAT[key]) MAT[key] = new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.8, metalness: 0.02 }, opts));
+    if (!MAT[key]) MAT[key] = litMaterial(Object.assign({ color, roughness: 0.8, metalness: 0.02 }, opts));
     return MAT[key];
   }
   function physMat(key, opts) {
-    if (!MAT[key]) MAT[key] = new THREE.MeshPhysicalMaterial(opts);
+    if (!MAT[key]) MAT[key] = litMaterial(opts, true);
     return MAT[key];
   }
   // Emissive-looking accents (markers, lamps): unlit, pushed into HDR when bloom is on.
@@ -565,10 +597,10 @@
     if (!detailed() || !GFX.pavingTexture) return plainMat(t.ground);
     const key = 'ground-' + themeName;
     if (!MAT[key]) {
-      if (!gfx.paving[themeName]) gfx.paving[themeName] = GFX.pavingTexture(t.ground, themeName.length * 977);
+      if (!gfx.paving[themeName]) gfx.paving[themeName] = GFX.pavingTexture(t.ground, themeName.length * 977, gfx.q.budget.texture);
       const tex = gfx.paving[themeName];
       tex.repeat.set(5, 5);
-      MAT[key] = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0 });
+      MAT[key] = litMaterial({ map: tex, roughness: 0.85, metalness: 0 });
     }
     return MAT[key];
   }
@@ -591,18 +623,18 @@
     const t = THEMES[themeName] || THEMES.plaza;
     scene.background = new THREE.Color(t.sky);
     const env = new THREE.Group();
-    const ground = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 0.5, detailed() ? 96 : 48), groundMat(t, themeName));
+    const ground = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 0.5, seg(detailed() ? 96 : 48, 24)), groundMat(t, themeName));
     ground.position.y = -0.25;
     ground.receiveShadow = true;
     env.add(ground);
     // plaza ring + decorative planters (deterministic decor stream)
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(13.2, 0.12, 8, 64), plainMat(t.accent));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(13.2, 0.12, seg(8, 4), seg(64, 24)), plainMat(t.accent));
     ring.rotation.x = Math.PI / 2; ring.position.y = 0.02;
     env.add(ring);
     const decorSeed = ((session.state ? session.state.seed : 7) * 2654435761) >>> 0;
     const dr = R.rng(decorSeed);
-    const potGeo = new THREE.CylinderGeometry(0.35, 0.28, 0.5, 10);
-    const bushGeo = new THREE.SphereGeometry(0.4, 10, 8);
+    const potGeo = new THREE.CylinderGeometry(0.35, 0.28, 0.5, seg(10, 6));
+    const bushGeo = new THREE.SphereGeometry(0.4, seg(10, 6), seg(8, 4));
     const pots = new THREE.InstancedMesh(potGeo, plainMat(0xb08968), 10);
     const bushes = new THREE.InstancedMesh(bushGeo, plainMat(0x6a994e), 10);
     const m4 = new THREE.Matrix4();
@@ -622,9 +654,9 @@
     env.add(pad);
     if (detailed()) {
       // low bollard lights just inside the plaza ring; warm caps glow under bloom
-      const n = 12, poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.11, 0.5, 10), plainMat(0x3a4250, { roughness: 0.45, metalness: 0.5 }), n);
+      const n = 12, poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.11, 0.5, seg(10, 6)), plainMat(0x3a4250, { roughness: 0.45, metalness: 0.5 }), n);
       const bulbMat = glowMat(themeName === 'night' ? 0xffd79a : 0xfff0d0, themeName === 'night' ? 4 : 2.6);
-      const bulbs = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 12), bulbMat, n);
+      const bulbs = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, seg(12, 6)), bulbMat, n);
       for (let i = 0; i < n; i++) {
         const a = (i + 0.5) / n * Math.PI * 2, rad = 12.7;
         m4.makeTranslation(Math.cos(a) * rad, 0.25, Math.sin(a) * rad); poles.setMatrixAt(i, m4);
@@ -728,7 +760,7 @@
           physMat('glass', { color: 0x1c2a3a, roughness: 0.08, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.05 }));
         glass.position.set(-0.3, 1.08, 0);
         grp.add(glass);
-        const wheelGeo = sharedGeo('wheel', () => new THREE.CylinderGeometry(0.17, 0.17, 0.12, 18).rotateX(Math.PI / 2));
+        const wheelGeo = sharedGeo('wheel', () => new THREE.CylinderGeometry(0.17, 0.17, 0.12, seg(18, 8)).rotateX(Math.PI / 2));
         for (const [wx, wz] of [[-0.5, 0.5], [0.5, 0.5], [-0.5, -0.5], [0.5, -0.5]]) {
           const wheel = new THREE.Mesh(wheelGeo, plainMat(0x262a31, { roughness: 0.75 }));
           wheel.position.set(wx, 0.17, wz);
@@ -743,7 +775,7 @@
       }
       // remaining-count pips
       for (let k = 0; k < veh.n; k++) {
-        const pip = new THREE.Mesh(sharedGeo('pip', () => new THREE.SphereGeometry(0.12, 12, 8)), colorMat(veh.c));
+        const pip = new THREE.Mesh(sharedGeo('pip', () => new THREE.SphereGeometry(0.12, seg(12, 6), seg(8, 4))), colorMat(veh.c));
         pip.position.set(-0.5 + k * 0.32, 1.45, 0);
         grp.add(pip);
       }
@@ -1404,8 +1436,9 @@
   }
   // Apply graphics changes live; a detail change swaps meshes so the scene is rebuilt.
   function applyGraphics(rebuild) {
+    gfx.lookChanged = false;
     computeQuality();
-    if (rebuild) rebuildAll();
+    if (rebuild || gfx.lookChanged) rebuildAll();
     syncGfxPanel();
     saveStore();
   }
@@ -1437,7 +1470,7 @@
     const el = $('gfx-summary');
     if (!el || !gfx.q) return;
     const info = graphicsInfo();
-    el.textContent = info.gpu + ' · ' + info.summary;
+    el.textContent = [info.gpu, Number.isFinite(info.level) ? GS.level.replace('{n}', info.level) : null, info.summary].filter(Boolean).join(' · ');
     $('gfx-post-note').hidden = !info.postFailed;
   }
   function applyHandedness() {

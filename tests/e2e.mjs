@@ -196,6 +196,7 @@ async function graphicsFlow(page, name) {
   await page.waitForFunction(() => document.body.dataset.gfxPreset === 'high');
   g = await gfxState();
   if (!/2048² shadows/.test(g.summary)) throw new Error(`high not applied: ${g.summary}`);
+  if (!/ · Level 0 · /.test(g.summary)) throw new Error(`summary lacks the hardware level: ${g.summary}`);
   const bloomLabel = await page.locator('#gfx-bloom option[value="preset"]').textContent();
   if (bloomLabel !== 'From preset (On)') throw new Error(`bloom preset label: ${bloomLabel}`);
   await page.locator('#gfx-bloom').scrollIntoViewIfNeeded();

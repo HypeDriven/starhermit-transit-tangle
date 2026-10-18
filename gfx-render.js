@@ -34,6 +34,15 @@ const GradeShader = {
     }`,
 };
 
+// Run a post pass at a fraction of the frame: EffectComposer.addPass/setSize hand every pass the full
+// frame size, so the pass's own setSize applies the budget's scale (half-res bloom/GTAO below Ultra).
+function atScale(pass, k) {
+  if (!(k > 0 && k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
+
 /** Build the post chain for resolved settings `q`; returns null when nothing needs it. */
 function buildComposer(renderer, scene, camera, w, h, ratio, q) {
   if (!q.post) return null;
@@ -45,7 +54,7 @@ function buildComposer(renderer, scene, camera, w, h, ratio, q) {
   composer.addPass(new RenderPass(scene, camera));
   if (q.ao !== 'off') {
     const hi = q.ao === 'high';
-    const ao = new GTAOPass(scene, camera, pw, ph);
+    const ao = atScale(new GTAOPass(scene, camera, pw, ph), q.budget ? q.budget.aoRes : 1);
     ao.output = GTAOPass.OUTPUT.Default;
     ao.blendIntensity = 0.75;
     ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: hi ? 16 : 8 });
@@ -53,7 +62,7 @@ function buildComposer(renderer, scene, camera, w, h, ratio, q) {
     composer.addPass(ao);
   }
   // Scene-linear bloom with a high threshold: only emissive markers, lamps and sparks glow.
-  if (q.bloom === 'on') composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.35, 1.15));
+  if (q.bloom === 'on') composer.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.35, 1.15), q.budget ? q.budget.bloomRes : 1));
   composer.addPass(new OutputPass());
   if (q.grade === 'on') composer.addPass(new ShaderPass(GradeShader));
   if (q.antialias === 'smaa') composer.addPass(new SMAAPass(pw, ph));
@@ -75,12 +84,14 @@ function roomEnvironment(renderer) {
   return tex;
 }
 
-/** Deterministic paving texture: square slabs with mortar lines and per-slab tone noise. */
-function pavingTexture(base, seed) {
+/** Deterministic paving texture: square slabs with mortar lines and per-slab tone noise, drawn in a
+ * 256-px pattern space at `px` pixels (the preset's texture budget). */
+function pavingTexture(base, seed, px = 256) {
   const size = 256, n = 8, cell = size / n;
   const cv = document.createElement('canvas');
-  cv.width = cv.height = size;
+  cv.width = cv.height = px;
   const g = cv.getContext('2d');
+  g.scale(px / size, px / size);
   const col = new THREE.Color(base);
   let s = (seed >>> 0) || 1;
   const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);

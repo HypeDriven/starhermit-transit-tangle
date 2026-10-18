@@ -3,6 +3,7 @@
 
 const en = {
   graphics: 'Graphics', quality: 'Quality', auto: 'Auto (detected: {tier})', renderScale: 'Render scale',
+  level: 'Level {n}',
   fromPreset: 'From preset ({tier})', adaptive: 'Adaptive resolution', showFps: 'Show frame rate',
   postFailed: 'Post-processing is unavailable on this device, so the game renders without it.',
   unknownGpu: 'unknown GPU',
@@ -28,6 +29,7 @@ const enGB = {
 
 const es = {
   graphics: 'Gráficos', quality: 'Calidad', auto: 'Automática (detectada: {tier})', renderScale: 'Escala de renderizado',
+  level: 'Nivel {n}',
   fromPreset: 'Según el ajuste ({tier})', adaptive: 'Resolución adaptativa', showFps: 'Mostrar fotogramas por segundo',
   postFailed: 'El posprocesado no está disponible en este dispositivo; el juego se muestra sin él.',
   unknownGpu: 'GPU desconocida',
@@ -54,6 +56,7 @@ const esES = {
 
 const de = {
   graphics: 'Grafik', quality: 'Qualität', auto: 'Automatisch (erkannt: {tier})', renderScale: 'Renderskalierung',
+  level: 'Stufe {n}',
   fromPreset: 'Aus Voreinstellung ({tier})', adaptive: 'Adaptive Auflösung', showFps: 'Bildrate anzeigen',
   postFailed: 'Nachbearbeitung ist auf diesem Gerät nicht verfügbar, daher wird ohne sie gerendert.',
   unknownGpu: 'unbekannte GPU',
@@ -74,6 +77,7 @@ const de = {
 
 const fr = {
   graphics: 'Graphismes', quality: 'Qualité', auto: 'Auto (détectée : {tier})', renderScale: 'Échelle de rendu',
+  level: 'Niveau {n}',
   fromPreset: 'Selon le préréglage ({tier})', adaptive: 'Résolution adaptative', showFps: 'Afficher les images par seconde',
   postFailed: 'Le post-traitement est indisponible sur cet appareil ; le jeu s’affiche sans lui.',
   unknownGpu: 'GPU inconnu',
@@ -100,6 +104,7 @@ const frCA = {
 
 const ptBR = {
   graphics: 'Gráficos', quality: 'Qualidade', auto: 'Automática (detectada: {tier})', renderScale: 'Escala de renderização',
+  level: 'Nível {n}',
   fromPreset: 'Da predefinição ({tier})', adaptive: 'Resolução adaptativa', showFps: 'Mostrar taxa de quadros',
   postFailed: 'O pós-processamento não está disponível neste dispositivo; o jogo é exibido sem ele.',
   unknownGpu: 'GPU desconhecida',
@@ -120,6 +125,7 @@ const ptBR = {
 
 const itIT = {
   graphics: 'Grafica', quality: 'Qualità', auto: 'Automatica (rilevata: {tier})', renderScale: 'Scala di rendering',
+  level: 'Livello {n}',
   fromPreset: 'Dalla preimpostazione ({tier})', adaptive: 'Risoluzione adattiva', showFps: 'Mostra frequenza fotogrammi',
   postFailed: 'La post-elaborazione non è disponibile su questo dispositivo, quindi il gioco viene mostrato senza.',
   unknownGpu: 'GPU sconosciuta',
