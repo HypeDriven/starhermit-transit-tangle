@@ -1,6 +1,6 @@
 # Transit Tangle — Product and Game Specification
 
-**Document status:** running specification; the game is a StarHermit engine 1.21.0 script game (host API 1.23, engine.minor=23) — sections 1–4 and 7 are the design, section 5 onward describes the game as built.  
+**Document status:** running specification; the game is a StarHermit engine 1.22.0 script game (host API 1.23, engine.minor=23) — sections 1–4 and 7 are the design, section 5 onward describes the game as built.  
 **Game index:** 15  
 **Genre:** Queue planning puzzle  
 **Players:** 1 player; optional asynchronous score comparison  
@@ -197,7 +197,7 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 ## 5. On the StarHermit engine
 
 ### Files
-- `starhermit.txt`: launch=index.html (the loader `npm run package` writes), engine.entry=native/main.ts, engine.version=1.21.0, engine.minor=23, capabilities platform, storage, clipboard; server=score-script.js (unchanged).
+- `starhermit.txt`: launch=index.html (the loader `npm run package` writes), engine.entry=native/main.ts, engine.version=1.22.0, engine.minor=23, capabilities platform, storage, clipboard; server=score-script.js (unchanged).
 - `rules.js` (unchanged rules, UMD on globalThis), `save.js` (save model), `strings.js` + `sh-i18n.js` (nine locales), `native/*.ts` (the client), `native/hint-worker.js`, `assets/ui-style.json` (from `tools/ui-style.css` via `npm run css`), `sfx/*.opus`.
 - `server.js` is the dev/test server (replay validation, its own boards); it is not shipped (.starhermitignore).
 
