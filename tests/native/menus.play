@@ -1,0 +1,82 @@
+# The menus in short landscape at DPR 3: Help, Settings (left-handed on and
+# off), Scores (device bests for a guest), Practice Easy with the hint (from
+# the worker), a dispatch and undo, pause and resume by Escape, Restart
+# round, Leave round, then Challenge and the Daily started and left.
+# viewport 844x390@3
+until 600 Transit Tangle
+frames 30
+touch =Help #2
+until 300 How to play
+frames 10
+save tt-help
+touch =Close
+until 300 Daily Challenge
+frames 10
+touch =Settings #2
+until 300 Color palette
+frames 10
+touch =Left-handed controls
+frames 10
+save tt-settings
+touch =Left-handed controls
+frames 10
+touch =Done
+until 300 Daily Challenge
+frames 10
+touch =Scores
+until 300 No Journey best yet on this device
+frames 10
+touch =Close
+until 300 Daily Challenge
+frames 10
+touch =Practice
+until 300 Unranked. Undo and hints allowed
+frames 10
+touch =Easy
+frames 200
+key KeyH 1
+until 2400 Try the
+frames 10
+save tt-hint
+touch Vehicle 1:
+frames 8
+touch Queue 1:
+frames 30
+key KeyU 1
+frames 10
+key Escape 1
+until 300 Paused
+frames 10
+key Escape 1
+frames 20
+key Escape 1
+until 300 Paused
+frames 10
+touch =Restart round
+frames 160
+key Escape 1
+until 300 Paused
+frames 10
+touch =Leave round
+until 300 Daily Challenge
+frames 10
+touch =Challenge
+until 300 move limit
+frames 10
+touch =Start
+frames 160
+save tt-challenge
+key Escape 1
+until 300 Paused
+frames 10
+touch =Leave round
+until 300 Daily Challenge
+frames 10
+touch =Daily Challenge
+frames 160
+expect daily
+key Escape 1
+until 300 Paused
+frames 10
+touch =Leave round
+until 300 Daily Challenge

@@ -1,0 +1,106 @@
+/* Transit Tangle — the browser build's style.css rewritten class-based for
+   the engine's UI (`npm run css` converts it into assets/ui-style.json).
+   Element selectors, ids, body.* classes and @media do not convert: every
+   widget names its classes, the breakpoints are layouts picked in
+   native/screens.ts, high contrast is a token set native/style.ts applies,
+   larger text is the runtime's text scale. color-mix() panels are
+   precomputed (92 % / 88 % white over the scene). */
+
+:root {
+  --bg: #eef3f8; --panel: #ffffff; --ink: #243b53; --ink-soft: #4a6b8a;
+  --accent: #3b82f6; --accent-ink: #ffffff; --danger: #d64545; --ok: #2f9e63;
+  --warn: #c77d0a; --line: #d7e3ee; --focus: #ff8c00;
+  --bar: #ffffffeb; --rail: #ffffffe0;
+}
+
+* { box-sizing: border-box; }
+
+/* ------------------------------------------------------------- text */
+.text { color: var(--ink); font-size: 16px; }
+.muted { color: var(--ink-soft); font-size: 16px; }
+.small { color: var(--ink-soft); font-size: 14px; }
+.warn { color: var(--warn); font-size: 14px; }
+.h1 { color: var(--ink); font-size: 35.2px; font-weight: 700; text-align: center; }
+.h2 { color: var(--ink); font-size: 24px; font-weight: 700; }
+.h3 { color: var(--ink-soft); font-size: 16px; font-weight: 700; }
+.tagline { color: var(--ink-soft); font-size: 16px; text-align: center; }
+.center { color: var(--ink); font-size: 16px; text-align: center; }
+.hud-k { color: var(--ink-soft); font-size: 16px; font-weight: 600; }
+.hud-v { color: var(--ink); font-size: 16px; }
+.hud-danger { color: var(--danger); font-size: 16px; font-weight: 700; }
+.toast-text { color: var(--panel); font-size: 15.2px; }
+.count { color: var(--accent); font-size: 80px; font-weight: 800; }
+.td { color: var(--ink); font-size: 16px; }
+.td-b { color: var(--ink); font-size: 16px; font-weight: 700; }
+.td-num { color: var(--ink); font-size: 16px; text-align: end; }
+.td-num-b { color: var(--ink); font-size: 16px; font-weight: 700; text-align: end; }
+.wrap { color: var(--ink); font-size: 16px; font-weight: 600; text-align: center; }
+.wrap-ink { color: var(--accent-ink); font-size: 16px; font-weight: 600; text-align: center; }
+
+/* ------------------------------------------------------------- surfaces */
+.bar { background: var(--bar); border-radius: 0; }
+.bar-line { background: var(--line); border-radius: 0; }
+.rail { background: var(--rail); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px;
+  box-shadow: 0 12px 40px rgba(20, 35, 55, 0.25); }
+.coach { background: var(--panel); border: 2px solid var(--accent); border-radius: 12px; padding: 10px 16px;
+  box-shadow: 0 6px 24px rgba(20, 35, 55, 0.25); }
+.mirror { background: var(--bar); border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; }
+.toast { background: var(--ink); border-radius: 20px; padding: 8px 18px; }
+.tr { border-bottom: 1px solid var(--line); border-radius: 0; padding: 4px 6px; }
+.tr-last { border-radius: 0; padding: 4px 6px; }
+
+/* ------------------------------------------------------------- buttons */
+.btn {
+  min-height: 44px; min-width: 44px; padding: 12px 22px;
+  background: var(--accent); border: 2px solid var(--accent); border-radius: 12px;
+  color: var(--accent-ink); font-size: 16.8px; font-weight: 600; text-align: center;
+}
+.btn:hover { background: #4b8cf7; }
+.btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn:disabled { opacity: 0.45; }
+.btn-sec {
+  min-height: 44px; min-width: 44px; padding: 12px 22px;
+  background: var(--panel); border: 2px solid var(--line); border-radius: 12px;
+  color: var(--ink); font-size: 16.8px; font-weight: 600; text-align: center;
+}
+.btn-sec:hover { background: #f4f8fc; }
+.btn-sec:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-sec:disabled { opacity: 0.45; }
+.btn-small {
+  min-height: 44px; min-width: 44px; padding: 8px 14px;
+  background: var(--panel); border: 2px solid var(--line); border-radius: 12px;
+  color: var(--ink); font-size: 15.2px; font-weight: 600; text-align: center;
+}
+.btn-small:hover { background: #f4f8fc; }
+.btn-small:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-small:disabled { opacity: 0.45; }
+.btn-tray {
+  min-height: 44px; min-width: 44px; padding: 10px 16px;
+  background: var(--panel); border: 2px solid var(--line); border-radius: 12px;
+  color: var(--ink); font-size: 16.8px; font-weight: 600; text-align: center;
+}
+.btn-tray:hover { background: #f4f8fc; }
+.btn-tray:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-tray:disabled { opacity: 0.45; }
+
+/* .stage-grid button (.done / .current / .locked) */
+.stage {
+  min-height: 44px; padding: 4px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--ink); font-size: 16px; text-align: center;
+}
+.stage:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.stage:disabled { opacity: 0.4; }
+.stage-done {
+  min-height: 44px; padding: 4px;
+  background: var(--ok); border: 1px solid var(--ok); border-radius: 8px;
+  color: #ffffff; font-size: 16px; text-align: center;
+}
+.stage-done:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.stage-current {
+  min-height: 44px; padding: 4px;
+  background: var(--panel); border: 3px solid var(--accent); border-radius: 8px;
+  color: var(--ink); font-size: 16px; text-align: center;
+}
+.stage-current:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }

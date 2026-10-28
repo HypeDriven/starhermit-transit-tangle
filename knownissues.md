@@ -56,3 +56,7 @@
 | `npm test` (node test.js) | ALL 162 TESTS PASSED |
 | `npm run test:server` (tests/server.test.mjs) | 6 tests passed |
 | `node tests/e2e.mjs` (desktop + mobile) | E2E PASS — no page errors |
+
+## Engine port (2026-10-28)
+
+- The browser client moved to the StarHermit engine 1.21.0 (minor 23); see spec.md §5. The old hint toast was overwritten at once by the "select" sound cue when text cues were on (default) — fixed in the port.
