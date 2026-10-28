@@ -1,14 +1,43 @@
 name=Transit Tangle
 description=Dispatch vehicles to matching passenger queues while keeping the holding lane from filling up.
-launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
 server=score-script.js
 cover=cover.jpg
+
+# StarHermit engine script game: one package, played natively by the
+# StarHermit client and in browsers by the engine's web runtime. Browsers open
+# launch=index.html, the loader `npm run package` writes (it pins the engine
+# on wiki.starhermit.com by hash; never edit it). Re-run `npm run package`
+# after every change and commit index.html + starhermit-files.json.
+launch=index.html
+engine.api=1
+engine.entry=native/main.ts
+engine.version=1.21.0
+engine.minor=23
+engine.capabilities=platform,storage,clipboard
+
+# Keyboard actions (players rebind keys and pads in the runtime's Options).
+# The plaza is also played with the pointer or a finger: a press on a
+# vehicle selects it, a press on a queue dispatches the selected vehicle.
+engine.group.prev=Targets
 control.prev=ArrowLeft+ArrowUp | Previous target
 control.next=ArrowRight+ArrowDown | Next target
 control.confirm=Enter+Space | Select / dispatch
 control.cancel=Escape | Cancel / pause / back
+engine.group.undo=Round
 control.undo=KeyU | Undo
 control.hint=KeyH | Hint
 control.camera=KeyR | Reset camera
 control.pause=KeyP | Pause
+
+# Gamepad (the browser build's pollGamepad): the D-pad or left stick moves
+# between targets, South confirms, East cancels, Start pauses; West undoes,
+# North hints, the right stick press resets the camera.
+engine.gamepad.prev=DpadLeft+DpadUp+LeftStickLeft+LeftStickUp
+engine.gamepad.next=DpadRight+DpadDown+LeftStickRight+LeftStickDown
+engine.gamepad.confirm=South
+engine.gamepad.cancel=East
+engine.gamepad.pause=Start
+engine.gamepad.undo=West
+engine.gamepad.hint=North
+engine.gamepad.camera=RightStickPress

@@ -17,7 +17,7 @@
   const mod = factory();
   if (typeof module === 'object' && module.exports) module.exports = mod;
   else root.TTRules = mod;
-})(typeof self !== 'undefined' ? self : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
 
   const RULES_VERSION = 1;
   const CONTENT_VERSION = 1;

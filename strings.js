@@ -4,6 +4,7 @@
 // strings in sh-i18n.js; both follow the same game locale.
 
 const enUS = {
+  tgtVehicle: 'Vehicle {n}: {color}, {left} left', tgtSelected: ', selected', optionsNote: 'Volumes, graphics quality, language, larger text, high contrast, reduced motion and vibration are in the StarHermit Options.', openOptions: 'Open Options', keyBindings: 'Key bindings',
   hudLabel: 'Game status', hudMode: 'Mode', hudObjective: 'Objective', hudScore: 'Score', hudMoves: 'Moves', hudHolding: 'Holding', hudLeft: 'Left',
   railLeftLabel: 'Objective and progress', objective: 'Objective',
   objectiveText: 'Dispatch vehicles into matching passenger queues. Win by clearing every passenger. Lose if the holding lane overflows.',
@@ -89,6 +90,7 @@ const enGB = {
 };
 
 const es419 = {
+  tgtVehicle: 'Vehículo {n}: {color}, quedan {left}', tgtSelected: ', seleccionado', optionsNote: 'El volumen, la calidad gráfica, el idioma, el texto grande, el alto contraste, el movimiento reducido y la vibración están en las Opciones de StarHermit.', openOptions: 'Abrir Opciones', keyBindings: 'Asignar teclas',
   hudLabel: 'Estado de la partida', hudMode: 'Modo', hudObjective: 'Objetivo', hudScore: 'Puntos', hudMoves: 'Movimientos', hudHolding: 'Espera', hudLeft: 'Quedan',
   railLeftLabel: 'Objetivo y progreso', objective: 'Objetivo',
   objectiveText: 'Envía vehículos a las filas de pasajeros que coincidan. Ganas al llevar a todos los pasajeros. Pierdes si el carril de espera se desborda.',
@@ -173,6 +175,7 @@ const esES = {
 };
 
 const deDE = {
+  tgtVehicle: 'Fahrzeug {n}: {color}, noch {left}', tgtSelected: ', ausgewählt', optionsNote: 'Lautstärke, Grafikqualität, Sprache, größere Schrift, hoher Kontrast, reduzierte Bewegung und Vibration findest du in den StarHermit-Optionen.', openOptions: 'Optionen öffnen', keyBindings: 'Tastenbelegung',
   hudLabel: 'Spielstatus', hudMode: 'Modus', hudObjective: 'Ziel', hudScore: 'Punkte', hudMoves: 'Züge', hudHolding: 'Warten', hudLeft: 'Übrig',
   railLeftLabel: 'Ziel und Fortschritt', objective: 'Ziel',
   objectiveText: 'Schicke Fahrzeuge zu passenden Fahrgastschlangen. Du gewinnst, wenn alle Fahrgäste abgeholt sind. Du verlierst, wenn die Warteschlange überläuft.',
@@ -249,6 +252,7 @@ const deDE = {
 };
 
 const frFR = {
+  tgtVehicle: 'Véhicule {n} : {color}, {left} restant(s)', tgtSelected: ', sélectionné', optionsNote: 'Les volumes, la qualité graphique, la langue, le texte agrandi, le contraste élevé, les animations réduites et la vibration se trouvent dans les Options StarHermit.', openOptions: 'Ouvrir les Options', keyBindings: 'Touches',
   hudLabel: 'État de la partie', hudMode: 'Mode', hudObjective: 'Objectif', hudScore: 'Score', hudMoves: 'Coups', hudHolding: 'Attente', hudLeft: 'Restants',
   railLeftLabel: 'Objectif et progression', objective: 'Objectif',
   objectiveText: 'Envoyez des véhicules vers les files de passagers correspondantes. Vous gagnez quand tous les passagers sont partis. Vous perdez si la voie d’attente déborde.',
@@ -332,6 +336,7 @@ const frCA = {
 };
 
 const ptBR = {
+  tgtVehicle: 'Veículo {n}: {color}, restam {left}', tgtSelected: ', selecionado', optionsNote: 'Volume, qualidade gráfica, idioma, texto maior, alto contraste, movimento reduzido e vibração ficam nas Opções da StarHermit.', openOptions: 'Abrir Opções', keyBindings: 'Teclas',
   hudLabel: 'Status do jogo', hudMode: 'Modo', hudObjective: 'Objetivo', hudScore: 'Pontos', hudMoves: 'Jogadas', hudHolding: 'Espera', hudLeft: 'Restam',
   railLeftLabel: 'Objetivo e progresso', objective: 'Objetivo',
   objectiveText: 'Envie veículos para as filas de passageiros correspondentes. Você vence ao levar todos os passageiros. Perde se a faixa de espera transbordar.',
@@ -408,6 +413,7 @@ const ptBR = {
 };
 
 const itIT = {
+  tgtVehicle: 'Veicolo {n}: {color}, ne restano {left}', tgtSelected: ', selezionato', optionsNote: 'Volumi, qualità grafica, lingua, testo più grande, contrasto elevato, movimento ridotto e vibrazione sono nelle Opzioni di StarHermit.', openOptions: 'Apri Opzioni', keyBindings: 'Tasti',
   hudLabel: 'Stato della partita', hudMode: 'Modalità', hudObjective: 'Obiettivo', hudScore: 'Punteggio', hudMoves: 'Mosse', hudHolding: 'Attesa', hudLeft: 'Rimasti',
   railLeftLabel: 'Obiettivo e progressi', objective: 'Obiettivo',
   objectiveText: 'Invia i veicoli alle code di passeggeri corrispondenti. Vinci quando tutti i passeggeri sono partiti. Perdi se la corsia d’attesa trabocca.',
