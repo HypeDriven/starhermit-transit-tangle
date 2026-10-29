@@ -509,7 +509,8 @@ export function applyLook(next: Look): void {
   scene.environmentIntensity = 0.32;
   hemi.intensity = scene.environment ? 0.7 : 1.1;
   sun.intensity = scene.environment ? 2.15 : 2.4;
-  renderer.bloom = next.bloom ? { strength: 0.5, radius: 0.35, threshold: 1.15, resolution: next.budget.bloomRes } : null;
+  // r170 page bloom 0.5, squared for the r185 UnrealBloom of minor 29
+  renderer.bloom = next.bloom ? { strength: 0.25, radius: 0.35, threshold: 1.15, resolution: next.budget.bloomRes } : null;
   const hi = next.ao === "high";
   renderer.ao = next.ao === "off" ? null : {
     blendIntensity: 0.75, radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: hi ? 16 : 8, resolution: next.budget.aoRes,
