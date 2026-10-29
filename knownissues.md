@@ -59,4 +59,4 @@
 
 ## Engine port (2026-10-28)
 
-- The browser client moved to the StarHermit engine 1.22.0 (minor 23); see spec.md §5. The old hint toast was overwritten at once by the "select" sound cue when text cues were on (default) — fixed in the port.
+- The browser client moved to the StarHermit engine 1.23.0 (minor 23); see spec.md §5. The old hint toast was overwritten at once by the "select" sound cue when text cues were on (default) — fixed in the port.
