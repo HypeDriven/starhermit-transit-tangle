@@ -503,7 +503,7 @@ export function applyLook(next: Look): void {
   sun.castShadow = next.shadows > 0;
   if (next.shadows > 0) sun.shadow.mapSize = next.shadows;
   if (next.reflections && !envTex) {
-    try { envTex = new PMREMGenerator(renderer).fromScene(new RoomEnvironment(renderer), 0.04).texture; } catch (e) { console.warn(`environment: ${String(e)}`); }
+    try { const pageRoom = new RoomEnvironment(renderer); pageRoom.position.y = 0; /* the page's three r170 (pre-r183) builds the room at the origin */ envTex = new PMREMGenerator(renderer).fromScene(pageRoom, 0.04).texture; } catch (e) { console.warn(`environment: ${String(e)}`); }
   }
   scene.environment = next.reflections ? envTex : null;
   scene.environmentIntensity = 0.32;
