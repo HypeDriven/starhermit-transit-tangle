@@ -509,8 +509,8 @@ export function applyLook(next: Look): void {
   scene.environmentIntensity = 0.32;
   hemi.intensity = scene.environment ? 0.7 : 1.1;
   sun.intensity = scene.environment ? 2.15 : 2.4;
-  // r170 page bloom 0.5, squared for the r185 UnrealBloom of minor 29
-  renderer.bloom = next.bloom ? { strength: 0.25, radius: 0.35, threshold: 1.15, resolution: next.budget.bloomRes } : null;
+  // r170 page: r176 UnrealBloom at the page's strength
+  renderer.bloom = next.bloom ? { model: "r176", strength: 0.5, radius: 0.35, threshold: 1.15, resolution: next.budget.bloomRes } : null;
   const hi = next.ao === "high";
   renderer.ao = next.ao === "off" ? null : {
     blendIntensity: 0.75, radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: hi ? 16 : 8, resolution: next.budget.aoRes,
@@ -519,7 +519,7 @@ export function applyLook(next: Look): void {
   // GradeShader after OutputPass: an 0.18 S-curve, saturation 1.1, cool shadows / warm highlights by a smoothstep of luma
   // 0.2–0.85, a 0.2 vignette from 0.4 to 0.9 with x × 1.1.
   renderer.grade = next.grade ? {
-    space: "display", contrast: 0.09, saturation: 1.1, split: [0.2, 0.85], shadows: [0.97, 0.99, 1.04], highlights: [1.03, 1.0, 0.97],
+    space: "display", contrastCurve: "s", contrast: 0.18, saturation: 1.1, split: [0.2, 0.85], shadows: [0.97, 0.99, 1.04], highlights: [1.03, 1.0, 0.97],
     vignette: { amount: 0.2, inner: 0.4, outer: 0.9, scale: [1.1, 1] },
   } : null;
   renderer.antialias = next.antialias;

@@ -1,6 +1,6 @@
 # Transit Tangle — Product and Game Specification
 
-**Document status:** running specification; the game is a StarHermit engine 1.27.0 script game (host API 1.29, engine.minor=29) — sections 1–4 and 7 are the design, section 5 onward describes the game as built.  
+**Document status:** running specification; the game is a StarHermit engine 1.28.0 script game (host API 1.30, engine.minor=30) — sections 1–4 and 7 are the design, section 5 onward describes the game as built.  
 **Game index:** 15  
 **Genre:** Queue planning puzzle  
 **Players:** 1 player; optional asynchronous score comparison  
@@ -197,7 +197,7 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 ## 5. On the StarHermit engine
 
 ### Files
-- `starhermit.txt`: launch=index.html (the loader `npm run package` writes), engine.entry=native/main.ts, engine.version=1.27.0, engine.minor=29, capabilities platform, storage, clipboard; server=score-script.js (unchanged).
+- `starhermit.txt`: launch=index.html (the loader `npm run package` writes), engine.entry=native/main.ts, engine.version=1.28.0, engine.minor=30, capabilities platform, storage, clipboard; server=score-script.js (unchanged).
 - `rules.js` (unchanged rules, UMD on globalThis), `save.js` (save model), `strings.js` + `sh-i18n.js` (nine locales), `native/*.ts` (the client), `native/hint-worker.js`, `assets/ui-style.json` (from `tools/ui-style.css` via `npm run css`), `sfx/*.opus`.
 - `server.js` is the dev/test server (replay validation, its own boards); it is not shipped (.starhermitignore).
 
@@ -216,7 +216,7 @@ In a round: the HUD (mode, objective, score, moves and the move limit, holding a
 The runtime's Options own volumes, graphics quality and frame rate, language, larger text, high contrast, reduced motion and vibration. The game's Settings keep the colour palette (default, colour-vision safe, high contrast), left-handed controls, text cues for sounds (on by default), Replay tutorial, and buttons to the Options and key bindings.
 
 ### Graphics
-Quality tiers follow gfx.js's presets and budgets (native/quality.ts): Low (Lambert, no shadows/post, MSAA), Balanced (Standard, 1024 shadows, bloom, grade, FXAA, reflections, detailed meshes and paving), High (Physical clear-coat, 2048 shadows, GTAO, SMAA), Ultra (4096 shadows, full GTAO, MSAA, 1.5× segments, 512 px paving). At minor 29 the page's r170 values apply unchanged: sun 2.4 / hemisphere 1.1 (2.15 / 0.7 with reflections), the fitted shadow box with bias −0.0004 / normal bias 0.02, RoomEnvironment as scene.environment at 0.32, ACES at 1.0, bloom 0.5/0.35/1.15 (strength squared to 0.25 for the r185 bloom of minor 29, so it looks as r170 drew it), the display-space grade and vignette; the sky colour background goes through the post chain as in three. Sparks scale with the hardware level within the tier.
+Quality tiers follow gfx.js's presets and budgets (native/quality.ts): Low (Lambert, no shadows/post, MSAA), Balanced (Standard, 1024 shadows, bloom, grade, FXAA, reflections, detailed meshes and paving), High (Physical clear-coat, 2048 shadows, GTAO, SMAA), Ultra (4096 shadows, full GTAO, MSAA, 1.5× segments, 512 px paving). At minor 30 the page's r170 values apply unchanged: sun 2.4 / hemisphere 1.1 (2.15 / 0.7 with reflections), the fitted shadow box with bias −0.0004 / normal bias 0.02, RoomEnvironment as scene.environment at 0.32, ACES at 1.0, bloom 0.5/0.35/1.15 (bloom model "r176" at the page strength, minor 30), the display-space grade and vignette; the sky colour background goes through the post chain as in three. Sparks scale with the hardware level within the tier.
 
 ### Sound
 The authored clips per event (random variant), the 110 Hz ambience (carrier 110.5 Hz so the rendered loop closes) and the seeded music plucks while a round is active, rendered to clips; ambience plays on the music bus.
