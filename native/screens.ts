@@ -32,11 +32,9 @@ import {
 // ------------------------------------------------------------------ layout
 interface Layout { lw: number; lh: number; sc: number; wide: boolean; compact: boolean; land: boolean; ox: number; oy: number }
 function layoutNow(): Layout {
-  const f = frame();
-  const sc = ui.preferences().scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
-  return { lw, lh, sc, wide: lw >= 1024, compact: lw <= 640, land: lh <= 500 && lw > lh, ox: sa.left, oy: sa.top };
+  const v = ui.viewport!();
+  const lw = Math.max(1, v.width), lh = Math.max(1, v.height);
+  return { lw, lh, sc: v.scale, wide: lw >= 1024, compact: lw <= 640, land: lh <= 500 && lw > lh, ox: v.x, oy: v.y };
 }
 const lastSize = new Map<string, ui.Rect>();
 function textWidth(text: string, style: string, kind?: "button" | "heading"): number {
@@ -63,20 +61,10 @@ function button(b: Btn): void {
   if (ui.style(style, s).id(b.id).button(b.name ?? b.text, opts) && fresh()) later(b.act);
 }
 /** Buttons at their own widths in rows that wrap at `width` (.row: flex-wrap, gap 10). */
-function flow(label: string, list: Btn[], width: number, justify: "start" | "center" = "start", gap = 10): number {
-  const rows: Btn[][] = [[]];
-  let used = 0;
-  const bw = (b: Btn): number => Math.min(width, b.width ?? btnWidth(b));
-  for (const b of list) {
-    const w = bw(b);
-    if (rows[rows.length - 1]!.length && used + gap + w > width) { rows.push([]); used = 0; }
-    used += (rows[rows.length - 1]!.length ? gap : 0) + w;
-    rows[rows.length - 1]!.push(b);
-  }
-  ui.column(label, () => {
-    rows.forEach((row, ri) => ui.row(`${label}-r${ri}`, () => { for (const b of row) button({ ...b, width: bw(b) }); }, { spacing: gap, width, justify, align: "center" }));
-  }, { spacing: gap, width });
-  return rows.length;
+function flow(label: string, list: Btn[], width: number, justify: "start" | "center" = "start", gap = 10): void {
+  ui.row(label, () => {
+    for (const b of list) button(b.width != null ? { ...b, width: Math.min(width, b.width) } : btnWidth(b) > width ? { ...b, width } : b);
+  }, { wrap: true, width, gap, justify, align: "center" });
 }
 function toWindow(L: Layout, x: number, y: number, w: number, h: number): ui.Rect {
   return { x: L.ox + x * L.sc, y: L.oy + y * L.sc, width: w * L.sc, height: h * L.sc };
@@ -193,7 +181,7 @@ function tray(L: Layout): number {
   const h = rows * bh + (rows - 1) * gap + 2 * pad;
   paint("tray-bg", 0, L.lh - h, L.lw, h, "bar");
   paint("tray-line", 0, L.lh - h, L.lw, 1, "bar-line");
-  ui.place("tray", { anchor: "top-start", x: pad, y: L.lh - h + pad }, () => { flow("tray-in", list, inner, "center"); });
+  ui.place("tray", { anchor: "top-start", x: pad, y: L.lh - h + pad }, () => { flow("tray-in", list.map((b) => ({ ...b, width: btnWidth(b) })), inner, "center"); });
   return h;
 }
 

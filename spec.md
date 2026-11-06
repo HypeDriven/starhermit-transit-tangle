@@ -139,7 +139,7 @@ The subject is the active playfield at near-tabletop to room scale, framed so st
 
 | Preset (floor level) | Pixel ratio cap / scale | Shadows | Post | Materials | Tessellation | Rounded-box segments | Paving texture | Sparks per boarding |
 |---|---|---|---|---|---|---|---|---|
-| Low (0) | 1 / 1 | off | none (canvas MSAA) | Lambert | ½ of authored | — (plain boxes) | — (plain) | 6 (Particles low) |
+| Low (0) | 1 / 1 | off | none (native client: no anti-aliasing) | Lambert | ½ of authored | — (plain boxes) | — (plain) | 6 (Particles low) |
 | Balanced (4) | 1.5 / 1 | 1024² | half-res bloom, grade, FXAA, reflections | Standard (no clearcoat) | ¾ | 2 | 256 px | 18 |
 | High (10) | 2 / 1 | 2048² | half-res GTAO + bloom, grade, SMAA, reflections | Physical (clear-coated toy finish) | authored | 3 | 256 px | 24 |
 | Ultra (17) | 2 / 1.25 | 4096² | full-res GTAO (16 samples) + bloom, grade, MSAA, reflections | Physical | 1.5× | 4 | 512 px | 36 |
@@ -198,7 +198,7 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 
 ### Files
 - `starhermit.txt`: launch=index.html (the loader `npm run package` writes), engine.entry=native/main.ts, engine.version=1.37.0, engine.minor=37, capabilities platform, storage, clipboard; server=score-script.js (unchanged).
-- `rules.js` (unchanged rules, UMD on globalThis), `save.js` (save model), `strings.js` + `sh-i18n.js` (nine locales), `native/*.ts` (the client), `native/hint-worker.js`, `assets/ui-style.json` (from `tools/ui-style.css` via `npm run css`), `sfx/*.opus`.
+- `rules.js` (unchanged rules, UMD on globalThis), `save.js` (save model), `assets/strings.json` (nine locales, on the engine's strings; account lines are the engine's `starhermit.*`), `native/*.ts` (the client), `native/hint-worker.js`, `assets/ui-style.json` (from `tools/ui-style.css` via `npm run css`), `sfx/*.opus`.
 - `server.js` is the dev/test server (replay validation, its own boards); it is not shipped (.starhermitignore).
 
 ### Screens and flow
@@ -216,7 +216,7 @@ In a round: the HUD (mode, objective, score, moves and the move limit, holding a
 The runtime's Options own volumes, graphics quality and frame rate, language, larger text, high contrast, reduced motion and vibration. The game's Settings keep the colour palette (default, colour-vision safe, high contrast), left-handed controls, text cues for sounds (on by default), Replay tutorial, and buttons to the Options and key bindings.
 
 ### Graphics
-Quality tiers follow gfx.js's presets and budgets (native/quality.ts): Low (Lambert, no shadows/post, MSAA), Balanced (Standard, 1024 shadows, bloom, grade, FXAA, reflections, detailed meshes and paving), High (Physical clear-coat, 2048 shadows, GTAO, SMAA), Ultra (4096 shadows, full GTAO, MSAA, 1.5× segments, 512 px paving). At minor 31 the page's r170 values apply unchanged: sun 2.4 / hemisphere 1.1 (2.15 / 0.7 with reflections), the fitted shadow box with bias −0.0004 / normal bias 0.02, RoomEnvironment as scene.environment at 0.32, ACES at 1.0, bloom 0.5/0.35/1.15 (bloom model "r176" at the page strength, minor 31), the display-space grade and vignette; the sky colour background goes through the post chain as in three. Sparks scale with the hardware level within the tier.
+Quality tiers follow gfx.js's presets and budgets (native/quality.ts): Low (Lambert, no shadows/post, no anti-aliasing: the engine's level), Balanced (Standard, 1024 shadows, bloom, grade, FXAA, reflections, detailed meshes and paving), High (Physical clear-coat, 2048 shadows, GTAO, SMAA), Ultra (4096 shadows, full GTAO, MSAA, 1.5× segments, 512 px paving). At minor 31 the page's r170 values apply unchanged: sun 2.4 / hemisphere 1.1 (2.15 / 0.7 with reflections), the fitted shadow box with bias −0.0004 / normal bias 0.02, RoomEnvironment as scene.environment at 0.32, ACES at 1.0, bloom 0.5/0.35/1.15 (bloom model "r176" at the page strength, minor 31), the display-space grade and vignette; the sky colour background goes through the post chain as in three. Sparks scale with the hardware level within the tier.
 
 ### Sound
 The authored clips per event (random variant), the 110 Hz ambience (carrier 110.5 Hz so the rendered loop closes) and the seeded music plucks while a round is active, rendered to clips; ambience plays on the music bus.

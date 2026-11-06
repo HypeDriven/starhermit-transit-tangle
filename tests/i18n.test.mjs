@@ -4,7 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { STRINGS } from '../strings.js';
+
+const STRINGS = JSON.parse(readFileSync(new URL('../assets/strings.json', import.meta.url), 'utf8'));
 
 const keys = new Set();
 for (const f of readdirSync(new URL('../native/', import.meta.url)).filter((n) => n.endsWith('.ts'))) {

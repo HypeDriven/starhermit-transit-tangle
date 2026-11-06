@@ -22,9 +22,9 @@
 // The old canvas spanned the window under the HUD, tray and coach; the
 // camera's view offset frames the board in what they leave, as fitCamera did.
 import {
-  ACESFilmicToneMapping, Box3, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CapsuleGeometry, Color, ConeGeometry,
+  ACESFilmicToneMapping, Box3, BoxGeometry, CanvasTexture, CapsuleGeometry, Color, ConeGeometry,
   CylinderGeometry, DirectionalLight, DoubleSide, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial,
-  MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, Points,
+  MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, ParticleEmitter, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator,
   PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, Sphere,
   SphereGeometry, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene,
   type BufferGeometry as Geo, type Material, type Object3D, type Texture,
@@ -83,14 +83,10 @@ let state: State | null = null;
 let selected = -1;
 let time = 0;
 
-// particle pool (bounded, cosmetic only, never raycast)
+// the boarding sparks (cosmetic only, never raycast): one native emitter per colour, 0 white, 1–5 the palette's
 const PMAX = 200;
-const pGeo = new BufferGeometry();
-pGeo.setAttribute("position", new BufferAttribute(new Float32Array(PMAX * 3), 3));
-pGeo.setAttribute("color", new BufferAttribute(new Float32Array(PMAX * 3).fill(1), 3));
-interface Spark { x: number; y: number; z: number; vx: number; vy: number; vz: number; t: number; r: number; g: number; b: number }
-const live: Spark[] = [];
-let particles: Points | null = null;
+const sparkEmitters: ParticleEmitter[] = [];
+let sparkMat: PointsMaterial | null = null;
 
 function sparkTexture(): Texture {
   const cv = new OffscreenCanvas(64, 64);
@@ -106,19 +102,25 @@ function sparkTexture(): Texture {
   return tex;
 }
 function ensureParticles(): void {
-  if (particles) return;
-  const spark = sparkTexture();
-  particles = new Points(pGeo, new PointsMaterial({
-    color: new Color(0xffffff), size: 0.2, map: spark, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, alphaTest: 0.02,
-  }));
-  particles.frustumCulled = false;
-  scene.add(particles);
+  if (sparkMat) return;
+  sparkMat = new PointsMaterial({
+    color: new Color(0xffffff), size: 0.2, map: sparkTexture(), transparent: true, opacity: 0.95, depthWrite: false, alphaTest: 0.02,
+  });
+  for (let i = 0; i <= 5; i++) {
+    const e = new ParticleEmitter({
+      capacity: PMAX, material: sparkMat, seed: 0x2545f491 + i, shape: "box", extent: 0.5, life: 0.8,
+      velocity: [0, 2.75, 0], velocitySpread: 0.75, gravity: [0, -4, 0],
+    });
+    e.frustumCulled = false;
+    scene.add(e);
+    sparkEmitters.push(e);
+  }
 }
 
 // ---------------------------------------------------------------- materials and geometry (app.js caches)
 const GEO: Record<string, Geo> = {};
 const MAT: Record<string, Material> = {};
-const glow = (k: number): number => (look?.bloom ? k : 1);
+const glow = (k: number): number => (look && look.bloom !== null ? k : 1);
 const detailed = (): boolean => !!look?.detailed;
 const seg = (n: number, min = 4): number => Math.max(min, Math.round(n * (look ? look.budget.segments : 1)));
 type Params = Record<string, unknown>;
@@ -437,39 +439,13 @@ function tweenFrom(m: Object3D, x: number, z: number): void {
   m.position.set(x, 0.55, z);
   tweens.push({ obj: m.position, to: target, t: 0, dur: 0.4 });
 }
-let sparkRnd = 0x2545f491;
-const rnd = (): number => ((sparkRnd = (sparkRnd * 1664525 + 1013904223) >>> 0) / 4294967296);
-const sparkColor = new Color();
+/** A spark in three is white, the rest the colour (HDR with bloom); from y 1–2 they can't reach the ground in their 0.8 s. */
 function burst(at: { x: number; z: number }, colorIndex: number): void {
   if (reduced || !look) return;
   ensureParticles();
-  const base = colorIndex ? colorOf(colorIndex) : 0xffffff;
-  const n = sparkCount(look);
-  for (let i = 0; i < n; i++) {
-    sparkColor.set(i % 3 === 0 ? 0xffffff : base).multiplyScalar(glow(2.4));
-    live.push({
-      x: at.x + (rnd() - 0.5), y: 1 + rnd(), z: at.z + (rnd() - 0.5),
-      vx: (rnd() - 0.5) * 1.5, vy: 2 + rnd() * 1.5, vz: (rnd() - 0.5) * 1.5, t: 0.8, r: sparkColor.r, g: sparkColor.g, b: sparkColor.b,
-    });
-  }
-  if (live.length > PMAX) live.splice(0, live.length - PMAX);
-}
-function stepParticles(dt: number): void {
-  if (!particles) return;
-  for (let i = live.length - 1; i >= 0; i--) {
-    const p = live[i]!;
-    p.t -= dt; p.vy -= 4 * dt;
-    p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-    if (p.t <= 0 || p.y < 0) live.splice(i, 1);
-  }
-  const pos = pGeo.getAttribute("position") as BufferAttribute, col = pGeo.getAttribute("color") as BufferAttribute;
-  for (let i = 0; i < PMAX; i++) {
-    const p = live[i];
-    pos.setXYZ(i, p ? p.x : 0, p ? p.y : -10, p ? p.z : 0);
-    if (p) col.setXYZ(i, p.r, p.g, p.b);
-  }
-  pos.needsUpdate = true;
-  col.needsUpdate = true;
+  const n = sparkCount(look), whites = colorIndex ? Math.ceil(n / 3) : n, k = glow(2.4), to: [number, number, number] = [at.x, 1.5, at.z];
+  sparkEmitters[0]!.set({ color: new Color(0xffffff).multiplyScalar(k) }).burst(whites, to);
+  if (colorIndex) sparkEmitters[colorIndex]!.set({ color: new Color(colorOf(colorIndex)).multiplyScalar(k) }).burst(n - whites, to);
 }
 
 // ---------------------------------------------------------------- public
@@ -478,7 +454,7 @@ export function setRound(s: State | null, theme: string): void {
   const nextSeed = s ? s.seed : 7;
   const envChanged = theme !== themeName || nextSeed !== decorSeed || !envGroup;
   themeName = theme; decorSeed = nextSeed; state = s; selected = -1;
-  tweens = []; live.length = 0;
+  tweens = []; for (const e of sparkEmitters) e.clear();
   if (envChanged) buildEnvironment();
   rebuildBoard();
   frameKey = ""; // a new board: frame it again (fitCamera)
@@ -494,14 +470,14 @@ export function applyLook(next: Look): void {
   const prev = look;
   look = next;
   if (prev && (prev.budget.material !== next.budget.material || prev.budget.segments !== next.budget.segments ||
-    prev.budget.bevel !== next.budget.bevel || prev.budget.texture !== next.budget.texture || prev.detailed !== next.detailed || prev.bloom !== next.bloom)) {
+    prev.budget.bevel !== next.budget.bevel || prev.budget.texture !== next.budget.texture || prev.detailed !== next.detailed || (prev.bloom === null) !== (next.bloom === null))) {
     if (board) { scene.remove(board); disposeGroup(board); board = null; }
     if (envGroup) { scene.remove(envGroup); disposeGroup(envGroup); envGroup = null; }
     dropCaches();
   }
   renderer.shadowMap.enabled = next.shadows > 0;
   sun.castShadow = next.shadows > 0;
-  if (next.shadows > 0) sun.shadow.mapSize = next.shadows;
+  if (next.shadows > 0) sun.shadow.mapSize = next.shadows; // the level's size: at minor 23+ the engine keeps what the game sets
   if (next.reflections && !envTex) {
     try { const pageRoom = new RoomEnvironment(renderer); pageRoom.position.y = 0; /* the page's three r170 (pre-r183) builds the room at the origin */ envTex = new PMREMGenerator(renderer).fromScene(pageRoom, 0.04).texture; } catch (e) { console.warn(`environment: ${String(e)}`); }
   }
@@ -510,11 +486,11 @@ export function applyLook(next: Look): void {
   hemi.intensity = scene.environment ? 0.7 : 1.1;
   sun.intensity = scene.environment ? 2.15 : 2.4;
   // r170 page: r176 UnrealBloom at the page's strength
-  renderer.bloom = next.bloom ? { model: "r176", strength: 0.5, radius: 0.35, threshold: 1.15, resolution: next.budget.bloomRes } : null;
-  const hi = next.ao === "high";
-  renderer.ao = next.ao === "off" ? null : {
-    blendIntensity: 0.75, radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: hi ? 16 : 8, resolution: next.budget.aoRes,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: hi ? 6 : 4, rings: 2, samples: hi ? 16 : 8, radiusExponent: 2 },
+  renderer.bloom = next.bloom === null ? null : { model: "r176", strength: 0.5, radius: 0.35, threshold: 1.15, resolution: next.bloom };
+  const ao = next.ao, hi = !!ao && ao.resolution >= 1; // the engine's "high": full-resolution AO
+  renderer.ao = !ao ? null : {
+    blendIntensity: 0.75, radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: ao.samples, resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: hi ? 6 : 4, rings: 2, samples: ao.denoiseSamples, radiusExponent: 2 },
   };
   // GradeShader after OutputPass: an 0.18 S-curve, saturation 1.1, cool shadows / warm highlights by a smoothstep of luma
   // 0.2–0.85, a 0.2 vignette from 0.4 to 0.9 with x × 1.1.
@@ -523,7 +499,7 @@ export function applyLook(next: Look): void {
     vignette: { amount: 0.2, inner: 0.4, outer: 0.9, scale: [1.1, 1] },
   } : null;
   renderer.antialias = next.antialias;
-  if (particles) (particles.material as PointsMaterial).size = next.particles === "high" ? 0.26 : 0.18;
+  if (sparkMat) sparkMat.size = next.particles === "high" ? 0.26 : 0.18;
   if (!envGroup) buildEnvironment();
   rebuildBoard();
 }
@@ -618,7 +594,6 @@ export function update(dt: number, w: number, h: number, safe: Rect): void {
     tw.obj.lerp(tw.to, 1 - Math.pow(1 - k, 3));
     if (k >= 1) tweens.splice(i, 1);
   }
-  stepParticles(dt);
   const animated = !!look?.animated && !reduced;
   if (!animated) {
     if (time !== 0) for (const b of bob) { b.o.position.y = b.y + (b.lift || 0); b.ring?.scale.setScalar(1); }

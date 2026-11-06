@@ -14,7 +14,7 @@
 //
 // Time is the runtime's fixed steps: the countdown, toasts and the music
 // plucks run on a clock advanced 1/60 s per fixed step.
-import { frame, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate, clipboard } from "starhermit:engine";
+import { afterRender, frame, levelSettings, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate, clipboard } from "starhermit:engine";
 import { bindings, onAction, onPointerButton, onTouch, primaryPointer, vibrate } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { onSessionEnded, requestSignIn } from "starhermit:platform";
@@ -78,9 +78,8 @@ function flushAnnouncements(): void {
 export function toast(text: string, ms = 1500): void { app.toast = { text, until: now() + ms / 1000 }; }
 function caption(key: string, vars?: Record<string, string | number>): void { if (platform.options.captions) toast(T(key, vars), 900); }
 export function haptic(ms: number): void { try { vibrate(ms); } catch { /* none */ } }
-const pending: (() => void)[] = [];
 /** A widget's press, run once the frame's UI is built. */
-export function later(fn: () => void): void { pending.push(fn); }
+export function later(fn: () => void): void { afterRender(fn); }
 export const COLOR_KEYS = ["colorAmber", "colorBlue", "colorCoral", "colorGreen", "colorViolet"];
 export const colorName = (c: number): string => T(COLOR_KEYS[c - 1]!);
 const remaining = (s: State): number => s.q.reduce((a, l) => a + l.length, 0) + s.h.length;
@@ -287,8 +286,8 @@ export function endReason(r: Results): string {
 export function resultsLbLine(): string | null {
   const lb = app.results?.lb;
   if (!lb) return null;
-  if (lb === "posting") return S("lbPosting");
-  return !lb.posted ? S("lbNotPosted") : lb.rank ? S("lbRank", { rank: lb.rank }) : S("lbPosted");
+  if (lb === "posting") return S("leaderboardPosting");
+  return !lb.posted ? S("leaderboardNotPosted") : lb.rank ? S("leaderboardRank", { rank: lb.rank }) : S("leaderboardPosted");
 }
 
 // ------------------------------------------------------------------ coach (Learn)
@@ -411,7 +410,7 @@ export function signIn(): void { void requestSignIn().catch(() => undefined); }
 export function invite(): void {
   const link = platform.inviteLink();
   if (!link) return;
-  try { clipboard.writeText(link); toast(S("copied"), 2600); } catch { toast(S("copyFail", { url: link }), 6000); }
+  try { clipboard.writeText(link); toast(S("inviteCopied"), 2600); } catch { toast(S("inviteLink", { link }), 6000); }
 }
 
 // ------------------------------------------------------------------ keys and pads (app.js keydown + pollGamepad)
@@ -495,11 +494,10 @@ onFixedUpdate(() => {
 // ------------------------------------------------------------------ boot and lifecycle
 let lookKey = "";
 function applyLook(): void {
-  const f = frame();
-  const k = `${f.quality}:${f.levelIndex}`;
-  if (k === lookKey) return;
-  lookKey = k;
-  render.applyLook(lookFor(f.quality, f.levelIndex));
+  const level = frame().level;
+  if (level === lookKey) return;
+  lookKey = level;
+  render.applyLook(lookFor(levelSettings(level)));
 }
 onStart(() => {
   setFixedRate(60);
@@ -535,9 +533,11 @@ onUpdate((dt) => {
 onRender(() => {
   const wasActive = session.screen === "active";
   drawScreens();
-  for (const fn of pending.splice(0)) fn();
-  pointerInput(wasActive);
-  const f = frame();
-  render.update(frameDt, f.width, f.height, view);
-  flushAnnouncements();
+  // queued after this frame's presses (later), so they act on this frame's scene
+  afterRender(() => {
+    pointerInput(wasActive);
+    const f = frame();
+    render.update(frameDt, f.width, f.height, view);
+    flushAnnouncements();
+  });
 });
