@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Transit Tangle on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. The rules (rules.js) are the browser build's,
@@ -530,7 +531,7 @@ onUpdate((dt) => {
   audio.update();
   if (app.toast && app.toast.until < now()) app.toast = null;
 });
-onRender(() => {
+onRender(__l10nRender(() => {
   const wasActive = session.screen === "active";
   drawScreens();
   // queued after this frame's presses (later), so they act on this frame's scene
@@ -540,4 +541,8 @@ onRender(() => {
     render.update(frameDt, f.width, f.height, view);
     flushAnnouncements();
   });
-});
+}));
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);

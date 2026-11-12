@@ -20,7 +20,7 @@ for (const k of ['journey', 'challenge', 'signedInBest', 'localRecords']) keys.a
 const holes = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
 
 test('every client key is translated in all nine locales', () => {
-  assert.equal(Object.keys(STRINGS).length, 9);
+  assert.equal(Object.keys(STRINGS).length, 52);
   assert.ok(keys.size > 120, `found ${keys.size}`);
   const bad = [];
   for (const k of keys) for (const [l, t] of Object.entries(STRINGS)) {

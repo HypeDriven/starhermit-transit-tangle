@@ -1,3 +1,7 @@
+import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
+import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
+// localization-runtime:attached
+import { openLocalizedOptions as __l10nOptions } from "./l10n/menu.ts";
 // The browser build's DOM shell (index.html + style.css + app.js ui) as
 // starhermit:ui, built every frame over the plaza: the HUD (mode, objective,
 // score, moves against the limit, holding against its capacity — red when
@@ -14,7 +18,23 @@
 // logical size (≥ 1024 px wide: rails; ≤ 640 px: compact; ≤ 500 px tall
 // landscape: the coach at the side). The scene's view rectangle goes to
 // main.ts (view → render.ts).
-import { frame, openMenu } from "starhermit:engine";
+// The browser build's DOM shell (index.html + style.css + app.js ui) as
+// starhermit:ui, built every frame over the plaza: the HUD (mode, objective,
+// score, moves against the limit, holding against its capacity — red when
+// nearly full — and passengers left), the rails on wide windows (objective,
+// progress and par; round, Hint/Undo and Reset camera; swapped for the
+// left-handed option), the "Board state (text)" mirror, the action tray
+// (Pause, Undo, Hint, Help, Settings), the lesson coach (above the tray, or
+// docked at the right in short landscape, with Hide / Show lesson), the
+// toast, the 3-2-1 countdown, named targets over the vehicles and queues
+// (the canvas picking's accessible mirror: screen readers and play scripts
+// find them), the keyboard focus ring and every screen (title, setup,
+// journey, pause, results, help, settings, scores) as dialogs over the
+// dimmed plaza. The old media queries are layouts picked by the window's
+// logical size (≥ 1024 px wide: rails; ≤ 640 px: compact; ≤ 500 px tall
+// landscape: the coach at the side). The scene's view rectangle goes to
+// main.ts (view → render.ts).
+import { frame } from "starhermit:engine";
 import { requestRebind } from "starhermit:input";
 import * as draw from "starhermit:draw";
 import * as ui from "starhermit:ui";
@@ -42,7 +62,7 @@ function textWidth(text: string, style: string, kind?: "button" | "heading"): nu
 }
 function para(text: string, width: number, cls = "text", id?: string): void {
   if (!text) return;
-  let u = ui.style(cls);
+  let u = ui.style(__l10nStyle(cls));
   if (id) u = u.id(id);
   if (textWidth(text, cls) <= width) u.label(text);
   else u.paragraph(text, Math.max(20, width));
@@ -54,11 +74,11 @@ function button(b: Btn): void {
   const opts: ui.ButtonOptions = {};
   if (b.disabled) opts.disabled = true;
   const ink = style === "btn" ? "wrap-ink" : "wrap";
-  if (b.width != null && btnWidth(b) > b.width) opts.content = () => { ui.style(ink).paragraph(b.text, Math.max(20, b.width! - 30)); };
-  else if (b.name && b.name !== b.text) opts.content = () => { ui.style(ink).label(b.text); };
+  if (b.width != null && btnWidth(b) > b.width) opts.content = () => { ui.style(__l10nStyle(ink)).paragraph(b.text, Math.max(20, b.width! - 30)); };
+  else if (b.name && b.name !== b.text) opts.content = () => { ui.style(__l10nStyle(ink)).label(b.text); };
   const s: ui.Style = {};
   if (b.width != null) s.width = b.width;
-  if (ui.style(style, s).id(b.id).button(b.name ?? b.text, opts) && fresh()) later(b.act);
+  if (ui.style(__l10nStyle(style), __l10nStyle(s)).id(b.id).button(b.name ?? b.text, opts) && fresh()) later(b.act);
 }
 /** Buttons at their own widths in rows that wrap at `width` (.row: flex-wrap, gap 10). */
 function flow(label: string, list: Btn[], width: number, justify: "start" | "center" = "start", gap = 10): void {
@@ -71,7 +91,7 @@ function toWindow(L: Layout, x: number, y: number, w: number, h: number): ui.Rec
 }
 function paint(id: string, x: number, y: number, w: number, h: number, cls: string): void {
   if (w <= 0 || h <= 0) return;
-  ui.place(id, { anchor: "top-start", x, y }, () => { ui.style(cls).widget("", { role: "none", size: { width: w, height: h } }); });
+  ui.place(id, { anchor: "top-start", x, y }, () => { ui.style(__l10nStyle(cls)).widget("", { role: "none", size: { width: w, height: h } }); });
 }
 
 // ------------------------------------------------------------------ the frame
@@ -110,7 +130,7 @@ function shell(L: Layout): void {
     });
   }
   if (session.screen === "preparing" && app.countdown > 0) {
-    ui.place("countdown", { anchor: "center" }, () => ui.style("count").id("countdown").label(String(app.countdown)));
+    ui.place("countdown", { anchor: "center" }, () => ui.style(__l10nStyle("count")).id("countdown").label(String(app.countdown)));
   }
 }
 
@@ -151,10 +171,10 @@ function hud(L: Layout): number {
       rows.forEach((row, ri) => ui.row(`hud-r${ri}`, () => {
         for (const it of row) {
           ui.row(it.id, () => {
-            ui.style(it.danger ? "hud-danger" : "hud-k").label(it.k);
-            if (inner < width(it) + 1 && it.id === "hud-objective") ui.style("hud-v").id(`${it.id}-v`).paragraph(it.v, Math.max(40, inner - textWidth(it.k, "hud-k") - 8));
-            else ui.style(it.danger ? "hud-danger" : "hud-v").id(`${it.id}-v`).label(it.v);
-            if (it.extra) ui.style("hud-danger").label(it.extra);
+            ui.style(__l10nStyle(it.danger ? "hud-danger" : "hud-k")).label(it.k);
+            if (inner < width(it) + 1 && it.id === "hud-objective") ui.style(__l10nStyle("hud-v")).id(`${it.id}-v`).paragraph(it.v, Math.max(40, inner - textWidth(it.k, "hud-k") - 8));
+            else ui.style(__l10nStyle(it.danger ? "hud-danger" : "hud-v")).id(`${it.id}-v`).label(it.v);
+            if (it.extra) ui.style(__l10nStyle("hud-danger")).label(it.extra);
           }, { spacing: 6, align: "center" });
         }
       }, { spacing: gapX, height: lineH, align: "center" }));
@@ -236,8 +256,8 @@ function mirror(L: Layout, top: number, bottom: number): void {
   const y = portrait ? top + 8 : bottom - 10 - prev / L.sc;
   ui.place("board-mirror", { anchor: "top-start", x, y }, () => {
     lastSize.set("mirror", ui.column("mirror-col", () => {
-      if (ui.style("btn-small", { padding: { top: 6, bottom: 6, start: 10, end: 10 }, minHeight: 32 }).id("mirror-toggle").button(T("mirrorSummary"), {
-        content: () => { ui.style("wrap").label(label); },
+      if (ui.style(__l10nStyle("btn-small"), __l10nStyle({ padding: { top: 6, bottom: 6, start: 10, end: 10 }, minHeight: 32 })).id("mirror-toggle").button(T("mirrorSummary"), {
+        content: () => { ui.style(__l10nStyle("wrap")).label(label); },
       }) && fresh()) later(() => { app.mirrorOpen = !app.mirrorOpen; });
       if (app.mirrorOpen) {
         ui.column("mirror-box", () => para(mirrorText(), w - 26, "small", "mirror-content"), { style: "mirror", width: w });
@@ -316,7 +336,7 @@ function overlay(L: Layout): void {
   const prev = lastSize.get(key);
   const scroll = !!prev && prev.height / L.sc + 2 * pad + (lastSize.get(`${key}-foot`)?.height ?? 0) / L.sc + 12 > maxH;
   const opening = frame().frame - app.openedFrame <= 6;
-  const isOpen = ui.style("dlg").dialog(panelLabel(p), "", true, () => {
+  const isOpen = ui.style(__l10nStyle("dlg")).dialog(panelLabel(p), "", true, () => {
     ui.column("panel", () => {
       const iw = inner - (scroll ? 14 : 0);
       const body = (): void => { lastSize.set(key, ui.column(`${key}-in`, () => buildPanel(p, iw, L), { spacing: 12, width: iw })); };
@@ -458,7 +478,7 @@ function journeyPanel(w: number, L: Layout): void {
           const done = p.journeyDone.includes(i), locked = i > p.journeyUnlocked;
           const name = T("stageLabel", { n: i + 1 }) + (done ? T("completedTag") : locked ? T("lockedTag") : "");
           const style = done ? "stage-done" : !locked && i === p.journeyUnlocked ? "stage-current" : "stage";
-          if (ui.style(style, { width: cw }).id(`stage-${i + 1}`).button(name, { disabled: locked, content: () => { ui.style(done ? "wrap-ink" : "wrap").label(String(i + 1)); } }) && fresh()) {
+          if (ui.style(__l10nStyle(style), __l10nStyle({ width: cw })).id(`stage-${i + 1}`).button(name, { disabled: locked, content: () => { ui.style(__l10nStyle(done ? "wrap-ink" : "wrap")).label(String(i + 1)); } }) && fresh()) {
             later(() => startRound("journey", { stage: i }));
           }
         }
@@ -485,10 +505,10 @@ function table(id: string, rows: string[][], w: number, boldLast = false): void 
       ui.row(`${id}-${i}`, () => {
         for (let c = 0; c < r.length - 1; c++) {
           if (c === r.length - 2) para(r[c]!, w * 0.68, last ? "td-b" : "td");
-          else ui.style("td").label(r[c]!);
+          else ui.style(__l10nStyle("td")).label(r[c]!);
         }
         ui.spacer();
-        ui.style(last ? "td-num-b" : "td-num").label(r[r.length - 1]!);
+        ui.style(__l10nStyle(last ? "td-num-b" : "td-num")).label(r[r.length - 1]!);
       }, { style: last ? "tr-last" : "tr", width: w, spacing: 12, align: "center" });
     });
   }, { spacing: 0, width: w });
@@ -529,7 +549,7 @@ function settingsPanel(w: number): void {
   para(T("settings"), w, "h2", "settings-h");
   para(T("optionsNote"), w, "muted", "options-note");
   flow("set-runtime", [
-    { id: "btn-options", text: T("openOptions"), act: () => openMenu() },
+    { id: "btn-options", text: T("openOptions"), act: () => __l10nOptions() },
     { id: "btn-rebind", text: T("keyBindings"), act: () => requestRebind() },
   ], w);
   const names = ["palDefault", "palCvd", "palContrast"];
@@ -553,7 +573,7 @@ function toggleRow(id: string, label: string, on: boolean, w: number, set: (v: b
         const s = st.scale, box = 22 * s, bx = r.x + (r.width - box) / 2, by = r.y + (r.height - box) / 2;
         draw.roundRect(bx, by, box, box, 4, on ? token("accent") : token("panel"));
         draw.strokeRoundRect(bx, by, box, box, 4, on ? token("accent") : token("ink-soft"), 2);
-        if (on) draw.text("✓", bx + box / 2, by + 1 * s, { size: 17 * s, color: "#ffffff", align: "center", weight: "bold" });
+        if (on) draw.text("✓", bx + box / 2, by + 1 * s, __l10nDrawOptions({ size: 17 * s, color: "#ffffff", align: "center", weight: "bold" }));
       },
     });
     if (res.activated && fresh()) later(() => set(!on));
