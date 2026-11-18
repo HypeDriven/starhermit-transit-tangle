@@ -1,6 +1,6 @@
 # Transit Tangle — Product and Game Specification
 
-**Document status:** running specification; the game is a StarHermit engine 1.39.0 script game (host API 1.39, engine.minor=39) — sections 1–4 and 7 are the design, section 5 onward describes the game as built.
+**Document status:** running specification; the game is a StarHermit engine 1.44.1 script game (host API 1.44, engine.minor=44) — sections 1–4 and 7 are the design, section 5 onward describes the game as built.
 **Game index:** 15  
 **Genre:** Queue planning puzzle  
 **Players:** 1 player; optional asynchronous score comparison  
@@ -197,7 +197,7 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 ## 5. On the StarHermit engine
 
 ### Files
-- `starhermit.txt`: launch=index.html (the loader `npm run package` writes), engine.entry=native/main.ts, engine.version=1.39.0, engine.minor=39, capabilities platform, storage, clipboard; server=score-script.js (unchanged).
+- `starhermit.txt`: launch=index.html (the loader `npm run package` writes), engine.entry=native/main.ts, engine.version=1.44.1, engine.minor=44, capabilities platform, storage, clipboard; server=score-script.js (unchanged).
 - `rules.js` (unchanged rules, UMD on globalThis), `save.js` (save model), `assets/strings.json` (nine locales, on the engine's strings; account lines are the engine's `starhermit.*`), `native/*.ts` (the client), `native/hint-worker.js`, `assets/ui-style.json` (from `tools/ui-style.css` via `npm run css`), `sfx/*.opus`.
 - `server.js` is the dev/test server (replay validation, its own boards); it is not shipped (.starhermitignore).
 
@@ -241,3 +241,13 @@ The engine save (schema 1) holds progress and achievements; devices merge best-o
 The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-SG`, `en-HK`, `en-BQ`, `es-CO`, `de-IT`, `fr-IT`, `es-CL`, `es-AR`, `es-EC`, `de-BR`. These reuse the corresponding existing translations in their language family. The runtime can resolve the exact regional tag. Language selection is available from the game’s Options panel or F2 and is saved per player in `ui.language`. Changes apply during play. Additional national, regional and indigenous language packs are only shipped once every English message has a translation with intact placeholders and markup. Complete additional language tables: `ja-JP`, `nl-BE`, `zh-SG`, `ms-SG`, `ta-SG`, `zh-HK`, `yue-HK`, `nl-NL`, `fi-FI`, `sv-FI`, `et-EE`, `id-ID`, `vi-VN`, `da-DE`, `lb-BE`, `co-FR`, `eu-FR`, `ca-FR`, `oc-FR`, `sl-IT`, `ca-IT`, `oc-IT`, `ca-ES`, `eu-ES`, `gl-ES`, `su-ID`, `bew-ID`, `km-VN`, `ru-FI`, `ru-EE`, `fur-IT`.
 
 <!-- regional-localization:end -->
+
+Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
+
+## Engine 1.44.1
+
+Browser play uses the WebGPU-only StarHermit 1.44.1 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+
+The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
+
+Toasts use native engine stacking, styling, accessibility and lifetime management.

@@ -22,13 +22,9 @@
 // The old canvas spanned the window under the HUD, tray and coach; the
 // camera's view offset frames the board in what they leave, as fitCamera did.
 import {
-  ACESFilmicToneMapping, Box3, BoxGeometry, CanvasTexture, CapsuleGeometry, Color, ConeGeometry,
-  CylinderGeometry, DirectionalLight, DoubleSide, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial,
-  MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, ParticleEmitter, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator,
-  PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, Sphere,
-  SphereGeometry, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene,
-  type BufferGeometry as Geo, type Material, type Object3D, type Texture,
+  ACESFilmicToneMapping, Box3, BoxGeometry, CanvasTexture, CapsuleGeometry, Color, ConeGeometry, CylinderGeometry, DirectionalLight, DoubleSide, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, Sphere, SphereGeometry, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type BufferGeometry as Geo, type Material, type Object3D, type Texture,
 } from "starhermit:scene";
+import { GPUParticleEmitter } from "starhermit:particles";
 import { OffscreenCanvas } from "starhermit:canvas";
 import { R, type Events, type State } from "./game.ts";
 import { sparkCount, type Look } from "./quality.ts";
@@ -85,7 +81,7 @@ let time = 0;
 
 // the boarding sparks (cosmetic only, never raycast): one native emitter per colour, 0 white, 1–5 the palette's
 const PMAX = 200;
-const sparkEmitters: ParticleEmitter[] = [];
+const sparkEmitters: GPUParticleEmitter[] = [];
 let sparkMat: PointsMaterial | null = null;
 
 function sparkTexture(): Texture {
@@ -107,7 +103,7 @@ function ensureParticles(): void {
     color: new Color(0xffffff), size: 0.2, map: sparkTexture(), transparent: true, opacity: 0.95, depthWrite: false, alphaTest: 0.02,
   });
   for (let i = 0; i <= 5; i++) {
-    const e = new ParticleEmitter({
+    const e = new GPUParticleEmitter({
       capacity: PMAX, material: sparkMat, seed: 0x2545f491 + i, shape: "box", extent: 0.5, life: 0.8,
       velocity: [0, 2.75, 0], velocitySpread: 0.75, gravity: [0, -4, 0],
     });

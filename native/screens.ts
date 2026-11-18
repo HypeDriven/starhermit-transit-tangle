@@ -1,3 +1,4 @@
+import { bindings } from "starhermit:input";
 import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
 import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
 // localization-runtime:attached
@@ -95,7 +96,7 @@ function paint(id: string, x: number, y: number, w: number, h: number, cls: stri
 }
 
 // ------------------------------------------------------------------ the frame
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L = layoutNow();
   const f = frame();
   shell(L);
@@ -122,13 +123,6 @@ function shell(L: Layout): void {
     else bottom = Math.min(bottom, r.y);
   }
   Object.assign(view, toWindow(L, left, top, right - left, bottom - top));
-  if (app.toast) {
-    const w = Math.min(L.lw - 32, 560);
-    const t = app.toast.text;
-    ui.place("toast", { anchor: "top", y: top + 18 }, () => {
-      ui.column("toast-box", () => para(t, Math.min(textWidth(t, "toast-text") + 1, w - 36), "toast-text", "toast-text"), { style: "toast" });
-    });
-  }
   if (session.screen === "preparing" && app.countdown > 0) {
     ui.place("countdown", { anchor: "center" }, () => ui.style(__l10nStyle("count")).id("countdown").label(String(app.countdown)));
   }
@@ -596,4 +590,11 @@ function scoresPanel(w: number): void {
     para(b != null ? T("bestOnDevice", { board: boardName, best: b }) : T("noBestOnDevice", { board: boardName }), w, "text", "scores-content");
   } else if (!v.entries.length) para(T("noEntries"), w, "text", "scores-content");
   else table("scores-table", [["#", T("player"), T("scoreCol")], ...v.entries.map((e, i) => [String(i + 1), e.name || T("player"), String(e.score)])], w);
+}
+
+export function drawScreens(): void {
+  if (!(session.screen === "help")) { drawScreensImmediate(); return; }
+  const actions = ["prev","next","confirm","cancel","undo","hint","camera","pause"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
 }

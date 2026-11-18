@@ -76,7 +76,7 @@ function flushAnnouncements(): void {
   const text = spoken.splice(0).pop()!.slice(0, 500);
   try { ui.announce(text, { politeness: "assertive" }); } catch { /* busy */ }
 }
-export function toast(text: string, ms = 1500): void { app.toast = { text, until: now() + ms / 1000 }; }
+export function toast(text: string, ms = 1500): void { ui.toast!(text, { duration: ms / 1000, position: "top", offset: 18, style: "toast", dismissible: false }); }
 function caption(key: string, vars?: Record<string, string | number>): void { if (platform.options.captions) toast(T(key, vars), 900); }
 export function haptic(ms: number): void { try { vibrate(ms); } catch { /* none */ } }
 /** A widget's press, run once the frame's UI is built. */
