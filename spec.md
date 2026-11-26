@@ -1,6 +1,6 @@
 # Transit Tangle — Product and Game Specification
 
-**Document status:** running specification; the game is a StarHermit engine 1.50.0 script game (host API 1.50, engine.minor=50) — sections 1–4 and 7 are the design, section 5 onward describes the game as built.
+**Document status:** running specification; the game is a StarHermit engine 1.51.0 script game (host API 1.51, engine.minor=51) — sections 1–4 and 7 are the design, section 5 onward describes the game as built.
 **Game index:** 15  
 **Genre:** Queue planning puzzle  
 **Players:** 1 player; optional asynchronous score comparison  
@@ -197,7 +197,7 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 ## 5. On the StarHermit engine
 
 ### Files
-- `starhermit.txt`: launch=index.html (the loader `npm run package` writes), engine.entry=native/main.ts, engine.version=1.50.0, engine.minor=50, capabilities platform, storage, clipboard; server=score-script.js (unchanged).
+- `starhermit.txt`: launch=index.html (the loader `npm run package` writes), engine.entry=native/main.ts, engine.version=1.51.0, engine.minor=51, capabilities platform, storage, clipboard; server=score-script.js (unchanged).
 - `rules.js` (unchanged rules, UMD on globalThis), `save.js` (save model), `assets/strings.json` (nine locales, on the engine's strings; account lines are the engine's `starhermit.*`), `native/*.ts` (the client), `native/hint-worker.js`, `assets/ui-style.json` (from `tools/ui-style.css` via `npm run css`), `sfx/*.opus`.
 - `server.js` is the dev/test server (replay validation, its own boards); it is not shipped (.starhermitignore).
 
@@ -244,9 +244,9 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
 
-## Engine 1.50.0
+## Engine 1.51.0
 
-Browser play uses the StarHermit 1.50.0 web runtime on WebGPU, or WebGL 2 where WebGPU is missing. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the StarHermit 1.51.0 web runtime on WebGPU, or WebGL 2 where WebGPU is missing. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
 
