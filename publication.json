@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-09-01T09:42:37.646945+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-23T17:02:54.665467+00:00",
+    "coverArtUpdatedAt": "2026-11-26T16:02:28.052+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-23T17:02:54.655691+00:00",
+      "deployedAt": "2026-11-26T16:02:28.040848+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.47.0",
+      "engineVersion": "1.50.0",
       "deployWarning": null
     },
     "description": "Dispatch vehicles to matching passenger queues while keeping the holding lane from filling up.",
@@ -36,19 +36,19 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-23T17:02:54.776Z",
-  "sourceCommit": "a2c8402ad3c53bfb1bda2d3543a099df406b4d21",
-  "bytesReceived": 1470470,
-  "archiveSha256": "02c3b3a7029f695ff43f051544133415e96dba2d03fd18e6f3cf968f19298651",
+  "publishedAt": "2026-11-26T16:02:27.208Z",
+  "sourceCommit": "d78b0bd60694bee517dea8bd73bbb68bf39e13a3",
+  "bytesReceived": 1470483,
+  "archiveSha256": "30bbe3dd73e51f8582ba6413dc81903dd0bbeff1b93feb557b835886600c5510",
   "indexSha256": "8d590fe941d2956c5d0ce0fafa9f5e0ee08f954890245ef6bde78f195aec1b8f",
   "result": {
     "clientPublished": true,
     "serverImageLoaded": false,
     "imageDigest": null,
-    "bytesReceived": 1470470,
+    "bytesReceived": 1470483,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.47.0",
+    "engineVersion": "1.50.0",
     "deployWarning": null
   },
   "liveVerification": {
